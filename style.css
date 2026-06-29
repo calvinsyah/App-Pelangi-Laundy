@@ -582,3 +582,14 @@ select:disabled {
     display: none !important;
   }
 }
+
+/* Drag and drop styling */
+.linen-drag-row.dragging {
+  opacity: 0.4;
+  border: 2px dashed #3b82f6;
+  background-color: #eff6ff;
+}
+.linen-drag-row.over {
+  border-top: 3px solid #3b82f6;
+}
+

@@ -37,8 +37,101 @@ const DB_DEFAULTS = {
   ],
   DB_MASTER_LINEN: [ { id: 1, name: "Sheet King" }, { id: 2, name: "Pillow Case" }, { id: 3, name: "Bath Towel" } ],
   DB_HARGA_PELANGGAN: {},
+  DB_LINEN_PELANGGAN: {},
 };
 Object.keys(DB_DEFAULTS).forEach((key) => { if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(DB_DEFAULTS[key])); });
+
+// ==================== HELPER: LINEN PER PELANGGAN ====================
+/**
+ * Ambil daftar linen untuk pelanggan tertentu (sorted by urutan).
+ * Jika belum ada konfigurasi, kembalikan semua masterLinen.
+ * @param {number} pelangganId
+ * @returns {Array<{linenId: number, urutan: number}>}
+ */
+function getLinenPelanggan(pelangganId) {
+  const db = JSON.parse(localStorage.getItem("DB_LINEN_PELANGGAN") || "{}");
+  const list = db[pelangganId];
+  if (!list || list.length === 0) {
+    // Fallback: semua masterLinen dengan urutan default
+    return masterLinen.map((m, idx) => ({ linenId: m.id, urutan: idx }));
+  }
+  return [...list].sort((a, b) => a.urutan - b.urutan);
+}
+
+/**
+ * Simpan daftar linen per-pelanggan ke localStorage.
+ * @param {number} pelangganId
+ * @param {Array<{linenId: number, urutan: number}>} list
+ */
+function saveLinenPelanggan(pelangganId, list) {
+  const db = JSON.parse(localStorage.getItem("DB_LINEN_PELANGGAN") || "{}");
+  db[pelangganId] = list;
+  localStorage.setItem("DB_LINEN_PELANGGAN", JSON.stringify(db));
+}
+
+/**
+ * Cek apakah pelanggan sudah punya konfigurasi linen sendiri.
+ * @param {number} pelangganId
+ * @returns {boolean}
+ */
+function hasLinenPelangganConfig(pelangganId) {
+  const db = JSON.parse(localStorage.getItem("DB_LINEN_PELANGGAN") || "{}");
+  return db[pelangganId] && db[pelangganId].length > 0;
+}
+
+/**
+ * Inisialisasi drag & drop untuk baris tabel linen di modal edit pelanggan.
+ * @param {HTMLElement} tbody
+ */
+function initLinenDragDrop(tbody) {
+  let dragSrcEl = null;
+
+  tbody.querySelectorAll('.linen-drag-row').forEach(row => {
+    row.addEventListener('dragstart', function(e) {
+      dragSrcEl = this;
+      e.dataTransfer.effectAllowed = 'move';
+      this.classList.add('dragging');
+      // Set simple text to allow dragging in Firefox
+      e.dataTransfer.setData('text/plain', '');
+    });
+
+    row.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      return false;
+    });
+
+    row.addEventListener('dragenter', function(e) {
+      if (dragSrcEl !== this) {
+        this.classList.add('over');
+      }
+    });
+
+    row.addEventListener('dragleave', function(e) {
+      this.classList.remove('over');
+    });
+
+    row.addEventListener('drop', function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      this.classList.remove('over');
+      if (dragSrcEl && dragSrcEl !== this) {
+        const rect = this.getBoundingClientRect();
+        const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+        tbody.insertBefore(dragSrcEl, next ? this.nextSibling : this);
+      }
+      return false;
+    });
+
+    row.addEventListener('dragend', function(e) {
+      tbody.querySelectorAll('.linen-drag-row').forEach(r => {
+        r.classList.remove('dragging');
+        r.classList.remove('over');
+      });
+    });
+  });
+}
+
 
 function generateKodePelanggan(nama) {
   const GENERIC = ["HOTEL", "HOTELS", "THE", "RS", "RUMAH", "SAKIT", "TAB", "CAPSULE", "CLINIC", "VILLA", "RESORT", "APARTEMEN"];
@@ -208,8 +301,8 @@ if (!document.getElementById("spinStyle")) {
 async function refreshDataSistem() {
   showLoading("Sinkronisasi data...");
   try {
-    const [{ data: jn }, { data: pl }, { data: ml }, { data: kr }, { data: ab }, { data: pg }, { data: kp }, { data: hp }, { data: invNum }, { data: invCnt }, { data: payStat }, { data: lk }, { data: ut }, { data: bh }] = await Promise.all([
-      db.from("jenis_nota").select("*"), db.from("pelanggan").select("*"), db.from("master_linen").select("*"), db.from("karyawan").select("*"), db.from("absensi").select("*"), db.from("pengaturan").select("*").limit(1), db.from("kop").select("*").limit(1), db.from("harga_pelanggan").select("*"), db.from("invoice_numbers").select("*"), db.from("invoice_counter").select("*"), db.from("payment_status").select("*"), db.from("locks").select("*"), db.from("utang").select("*"), db.from("backup_history").select("*")
+    const [{ data: jn }, { data: pl }, { data: ml }, { data: kr }, { data: ab }, { data: pg }, { data: kp }, { data: hp }, { data: invNum }, { data: invCnt }, { data: payStat }, { data: lk }, { data: ut }, { data: bh }, { data: lpRes }] = await Promise.all([
+      db.from("jenis_nota").select("*"), db.from("pelanggan").select("*"), db.from("master_linen").select("*"), db.from("karyawan").select("*"), db.from("absensi").select("*"), db.from("pengaturan").select("*").limit(1), db.from("kop").select("*").limit(1), db.from("harga_pelanggan").select("*"), db.from("invoice_numbers").select("*"), db.from("invoice_counter").select("*"), db.from("payment_status").select("*"), db.from("locks").select("*"), db.from("utang").select("*"), db.from("backup_history").select("*"), db.from("linen_pelanggan").select("*").then(r => r.error ? { data: [] } : r).catch(() => ({ data: [] }))
     ]);
     jenisNotaList = jn.map((j) => ({ name: j.name, multiplier: j.multiplier, forFlat: j.for_flat, forReguler: j.for_reguler }));
     pelangganList = pl.map((p) => ({ id: p.id, name: p.nama, kode: p.kode, type: p.tipe, billingSystem: p.billing_system, flatRate: p.flat_rate, tarifRS: p.tarif_rs, alamat: p.alamat, kota: p.kota }));
@@ -222,6 +315,7 @@ async function refreshDataSistem() {
     const kop = { nama: kopRow.nama || "", alamat: kopRow.alamat || "", telepon: kopRow.telepon || "", email: kopRow.email || "", kontak: kopRow.kontak || "" };
     localStorage.setItem("DB_KOP", JSON.stringify(kop));
     hargaPelanggan = {}; hp.forEach((h) => { if (!hargaPelanggan[h.pelanggan_id]) hargaPelanggan[h.pelanggan_id] = {}; hargaPelanggan[h.pelanggan_id][h.linen_id] = h.harga; });
+    const lpMap = {}; (lpRes || []).forEach((row) => { if (!lpMap[row.pelanggan_id]) lpMap[row.pelanggan_id] = []; lpMap[row.pelanggan_id].push({ linenId: row.linen_id, urutan: row.urutan }); }); localStorage.setItem("DB_LINEN_PELANGGAN", JSON.stringify(lpMap));
     const invNumObj = {}; invNum.forEach((inv) => { invNumObj[inv.cache_key] = inv.nomor; }); localStorage.setItem("DB_INVOICE_NUMBERS", JSON.stringify(invNumObj));
     const invCntObj = {}; invCnt.forEach((c) => { invCntObj[c.counter_key] = c.nilai; }); localStorage.setItem("DB_INVOICE_COUNTER", JSON.stringify(invCntObj));
     const payStatObj = {}; payStat.forEach((ps) => { payStatObj[ps.key] = ps.is_paid; }); localStorage.setItem("DB_PAYMENT_STATUS", JSON.stringify(payStatObj));
@@ -277,11 +371,16 @@ function renderFormLinenInput() {
   const pelName = document.getElementById("pelangganSelect").value; const pelData = pelangganList.find((p) => p.name === pelName); const pelId = pelData ? pelData.id : null;
   const tbody = document.getElementById("tabelLinenInput"); tbody.innerHTML = "";
   if (!pelId) { tbody.innerHTML = '<tr><td colspan="4">Pilih pelanggan terlebih dahulu.</td></tr>'; return; }
-  masterLinen.forEach((item, idx) => {
+  // Gunakan linen per-pelanggan (sorted by urutan), fallback ke masterLinen
+  const linenList = getLinenPelanggan(pelId);
+  linenList.forEach((entry, idx) => {
+    const item = masterLinen.find((m) => m.id === entry.linenId);
+    if (!item) return;
     const hargaSatuan = getHargaPerPelanggan(pelId, item.id, mult);
     tbody.innerHTML += `<tr><td>${idx + 1}</td><td><strong>${item.name}</strong></td><td>${fmtRp(hargaSatuan)}</td><td><input type="number" class="input-qty linen-item-qty" data-id="${item.id}" data-name="${item.name}" data-price="${hargaSatuan}" value="0" min="0"></td></tr>`;
   });
 }
+
 
 async function simpanNotaSistem() {
   const tgl = document.getElementById("notaTanggal").value;
@@ -323,7 +422,7 @@ async function simpanNotaSistem() {
 async function cariNotaSistem() {
   const tgl = document.getElementById("cariTanggal").value;
   const pelFilter = (document.getElementById("cariPelanggan").value || "").toLowerCase().trim();
-  let query = db.from("nota").select("*").order("id", { ascending: false });
+  let query = db.from("nota").select("*").order("tanggal", { ascending: true }).order("id", { ascending: true });
   if (tgl) query = query.eq("tanggal", tgl);
   const { data: notaData, error } = await query;
   if (error) { console.error("Gagal mengambil nota:", error); toast("Gagal memuat riwayat nota.", "error"); return; }
@@ -512,8 +611,11 @@ async function buildLinenRoomHTML(pel, bln, logoUrl) {
   const hargaPelangganData = JSON.parse(localStorage.getItem("DB_HARGA_PELANGGAN")) || {};
   const hargaKhusus = hargaPelangganData[pData?.id] || {};
   const currentMasterLinen = JSON.parse(localStorage.getItem("DB_MASTER_LINEN")) || [];
+  // Gunakan urutan linen per-pelanggan
+  const linenUrutan = pData ? getLinenPelanggan(pData.id) : currentMasterLinen.map((m, i) => ({ linenId: m.id, urutan: i }));
+  const orderedLinen = linenUrutan.map(e => currentMasterLinen.find(m => m.id === e.linenId)).filter(Boolean);
   const grid = {};
-  currentMasterLinen.forEach((item) => {
+  orderedLinen.forEach((item) => {
     const price = hargaKhusus[item.id] || 0;
     grid[item.id] = { name: item.name, price: price, qty: {} };
     for (let d = 1; d <= 31; d++) grid[item.id].qty[d] = 0;
@@ -533,7 +635,7 @@ async function buildLinenRoomHTML(pel, bln, logoUrl) {
   for (let d = 1; d <= 31; d++) html += `<th style="padding:5px 2px;text-align:center;width:22px;border:1px solid #999;">${d}</th>`;
   html += `<th style="padding:5px 4px;text-align:right;width:50px;border:1px solid #999;">Total</th><th style="padding:5px 4px;text-align:right;width:80px;border:1px solid #999;">Amount</th></tr></thead><tbody>`;
   let grandTotalQty = 0, grandTotalAmount = 0, rowNum = 0;
-  currentMasterLinen.forEach((item) => {
+  orderedLinen.forEach((item) => {
     const data = grid[item.id]; if (!data) return;
     let totalQty = 0, rowHtml = "";
     for (let d = 1; d <= 31; d++) { const q = data.qty[d]; rowHtml += `<td style="padding:3px 2px;text-align:center;border:1px solid #ccc;">${q > 0 ? q : ""}</td>`; totalQty += q; }
@@ -542,10 +644,11 @@ async function buildLinenRoomHTML(pel, bln, logoUrl) {
     html += `<tr><td style="padding:5px 4px;text-align:center;border:1px solid #ccc;">${rowNum}</td><td style="padding:5px 4px;border:1px solid #ccc;">${data.name}</td><td style="padding:5px 4px;text-align:right;border:1px solid #ccc;">${data.price.toLocaleString("id-ID")}</td>${rowHtml}<td style="padding:5px 4px;text-align:right;font-weight:600;border:1px solid #ccc;">${totalQty}</td><td style="padding:5px 4px;text-align:right;font-weight:600;border:1px solid #ccc;">${amount.toLocaleString("id-ID")}</td></tr>`;
   });
   html += `<tr style="background:#1e3a5f;color:white;font-weight:700;"><td colspan="3" style="padding:6px 4px;text-align:right;border:1px solid #999;">TOTAL KESELURUHAN</td>`;
-  for (let d = 1; d <= 31; d++) { let dayTotal = 0; currentMasterLinen.forEach((item) => { if (grid[item.id]) dayTotal += grid[item.id].qty[d] || 0; }); html += `<td style="padding:6px 2px;text-align:center;border:1px solid #999;">${dayTotal > 0 ? dayTotal : ""}</td>`; }
+  for (let d = 1; d <= 31; d++) { let dayTotal = 0; orderedLinen.forEach((item) => { if (grid[item.id]) dayTotal += grid[item.id].qty[d] || 0; }); html += `<td style="padding:6px 2px;text-align:center;border:1px solid #999;">${dayTotal > 0 ? dayTotal : ""}</td>`; }
   html += `<td style="padding:6px 4px;text-align:right;border:1px solid #999;">${grandTotalQty}</td><td style="padding:6px 4px;text-align:right;border:1px solid #999;">${grandTotalAmount.toLocaleString("id-ID")}</td></tr></tbody></table></div>`;
   return html;
 }
+
 
 async function cetakInvoicePelanggan() {
   const pel = document.getElementById("invoicePelangganSelect").value;
@@ -1583,7 +1686,11 @@ async function bukaModalEditLinen(id) {
     const jData = jenisNotaList.find((j) => j.name === (editSelect.value || nota.jenis));
     const mult = jData ? jData.multiplier : 1;
     if (!masterLinen || masterLinen.length === 0) { container.innerHTML = "<p>Master linen belum tersedia.</p>"; return; }
-    masterLinen.forEach((m) => {
+    // Gunakan linen per-pelanggan (sorted by urutan)
+    const linenList = getLinenPelanggan(pData.id);
+    linenList.forEach((entry) => {
+      const m = masterLinen.find((ml) => ml.id === entry.linenId);
+      if (!m) return;
       const exist = (nota.items || []).find((it) => it.idMaster === m.id);
       const qty = exist ? exist.qty : 0;
       const hargaSatuan = getHargaPerPelanggan(pData.id, m.id, mult);
@@ -1627,6 +1734,36 @@ async function simpanDetailPelanggan() {
   p.name = nama; p.kode = kode; p.type = tipe; p.billingSystem = billing; p.flatRate = flatRate; p.tarifRS = tarifRS; p.alamat = alamat; p.kota = kota;
   hargaPelanggan[id] = hargaBaru;
   localStorage.setItem("DB_HARGA_PELANGGAN", JSON.stringify(hargaPelanggan)); localStorage.setItem("DB_PELANGGAN", JSON.stringify(pelangganList));
+
+  // Simpan urutan linen per-pelanggan dari tabel detail pelanggan
+  const activeLinenList = [];
+  let urutanIndex = 0;
+  document.querySelectorAll("#tabelHargaLinen tr.linen-drag-row").forEach((row) => {
+    const cb = row.querySelector(".linen-active-cb");
+    if (cb && cb.checked) {
+      const linenId = parseInt(cb.dataset.linenId);
+      activeLinenList.push({ linenId, urutan: urutanIndex });
+      urutanIndex++;
+    }
+  });
+  saveLinenPelanggan(id, activeLinenList);
+
+  // Sync ke Supabase tabel 'linen_pelanggan'
+  try {
+    await db.from("linen_pelanggan").delete().eq("pelanggan_id", id);
+    const linenInsert = activeLinenList.map(item => ({
+      pelanggan_id: id,
+      linen_id: item.linenId,
+      urutan: item.urutan
+    }));
+    if (linenInsert.length > 0) {
+      const { error: syncError } = await db.from("linen_pelanggan").insert(linenInsert);
+      if (syncError) console.error("Gagal sync ke tabel linen_pelanggan Supabase:", syncError);
+    }
+  } catch (err) {
+    console.error("Gagal sync Supabase (tabel mungkin belum terbuat):", err);
+  }
+
   const counterVal = parseInt(document.getElementById("editPelangganCounter").value, 10);
   if (!isNaN(counterVal)) { const tahun = new Date().getFullYear(); await setCounterAwalPelanggan(kode, tahun, counterVal); }
 
@@ -1651,11 +1788,35 @@ function bukaModalEditPelanggan(id) {
   handleEditTipeChange(); handleEditBillingChange();
   const counters = JSON.parse(localStorage.getItem("DB_INVOICE_COUNTER")) || {}; const tahun = new Date().getFullYear(); const counterKey = `${p.kode}_${tahun}`;
   document.getElementById("editPelangganCounter").value = counters[counterKey] != null ? counters[counterKey] : "";
-  const hargaMap = hargaPelanggan[id] || {}; const tbody = document.getElementById("tabelHargaLinen");
-  if (!masterLinen.length) { tbody.innerHTML = '<tr><td colspan="2">Belum ada master linen.</td></tr>'; }
-  else { tbody.innerHTML = masterLinen.map((m) => `<tr><td>${m.name}</td><td><input type="text" class="harga-input" data-linen-id="${m.id}" value="${(hargaMap[m.id] || 0).toLocaleString("id-ID")}" oninput="formatCurrencyInput(this)"></td></tr>`).join(""); }
+  const hargaMap = hargaPelanggan[id] || {};
+  const tbody = document.getElementById("tabelHargaLinen");
+  if (!masterLinen.length) {
+    tbody.innerHTML = '<tr><td colspan="4">Belum ada master linen.</td></tr>';
+  } else {
+    // Ambil konfigurasi linen per-pelanggan
+    const savedList = getLinenPelanggan(id);
+    const savedIds = new Set(savedList.map(e => e.linenId));
+    // Baris yang sudah ada di daftar pelanggan (sesuai urutan)
+    const inList = savedList.map(e => masterLinen.find(m => m.id === e.linenId)).filter(Boolean);
+    // Baris yang belum masuk daftar (dari masterLinen)
+    const notInList = masterLinen.filter(m => !savedIds.has(m.id));
+    const allForRender = [...inList, ...notInList];
+    tbody.innerHTML = allForRender.map((m) => {
+      const isChecked = savedIds.has(m.id);
+      const harga = hargaMap[m.id] || 0;
+      return `<tr draggable="true" data-linen-id="${m.id}" class="linen-drag-row" style="cursor:grab;">
+        <td style="width:28px;text-align:center;font-size:18px;color:#aaa;cursor:grab;" class="drag-handle">⠿</td>
+        <td style="width:30px;text-align:center;"><input type="checkbox" class="linen-active-cb" data-linen-id="${m.id}" ${isChecked ? "checked" : ""}></td>
+        <td>${m.name}</td>
+        <td><input type="text" class="harga-input" data-linen-id="${m.id}" value="${harga.toLocaleString("id-ID")}" oninput="formatCurrencyInput(this)"></td>
+      </tr>`;
+    }).join("");
+    // Inisialisasi drag & drop
+    initLinenDragDrop(tbody);
+  }
   document.getElementById("modalDetailPelanggan").style.display = "flex";
 }
+
 function handleEditBillingChange() {
   const tipe = document.getElementById("editPelangganType").value; const billing = document.getElementById("editPelangganBilling").value;
   document.getElementById("editGroupFlat").style.display = tipe === "HOTEL" && billing === "FLAT" ? "block" : "none"; document.getElementById("editGroupTarif").style.display = tipe === "RS" ? "block" : "none";
@@ -1843,7 +2004,7 @@ function renderBackupStatus() {
 async function backupBulan(bln) {
   if (!await window.customConfirm(`Backup & hapus transaksi bulan ${bln}? Data master tetap aman.`)) return;
   const allData = { metadata: { version: "v24" }, data: {} };
-  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG"];
+  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
   allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
   const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_${bln}.json`; a.click();
@@ -1872,7 +2033,7 @@ async function backupSemuaBulanBelum() {
   if (belum.length === 0) { toast("Semua bulan sudah di-backup.", "info"); return; }
   if (!await window.customConfirm(`Backup & hapus ${belum.length} bulan yang belum di-backup? (${belum.join(", ")})`)) return;
   const allData = { metadata: { version: "v24" }, data: {} };
-  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG"];
+  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
   allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
   const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_${belum.join("_")}.json`; a.click();
@@ -1899,7 +2060,7 @@ async function backupSemuaBulanBelum() {
 async function backupDanBersihkan() {
   if (!await window.customConfirm("Backup & Bersihkan akan menghapus semua transaksi. Lanjutkan?")) return;
   const allData = { metadata: { version: "v24" }, data: {} };
-  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG"];
+  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
   allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
   const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_full_${new Date().toISOString().slice(0, 10)}.json`; a.click();
@@ -1919,7 +2080,7 @@ async function backupDanBersihkan() {
 }
 
 async function exportAllData() {
-  const tables = ["pelanggan", "jenis_nota", "master_linen", "karyawan", "absensi", "pengaturan", "kop", "harga_pelanggan", "nota", "biaya", "invoice_numbers", "invoice_counter", "payment_status", "locks", "utang", "gaji", "backup_history"];
+  const tables = ["pelanggan", "jenis_nota", "master_linen", "karyawan", "absensi", "pengaturan", "kop", "harga_pelanggan", "nota", "biaya", "invoice_numbers", "invoice_counter", "payment_status", "locks", "utang", "gaji", "backup_history", "linen_pelanggan"];
   const allData = {};
   for (const table of tables) { const { data } = await db.from(table).select("*"); allData[table] = data; }
   const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
@@ -1951,7 +2112,8 @@ async function handleFileImport(input) {
           DB_MASTER_LINEN: "master_linen", DB_HARGA_PELANGGAN: "harga_pelanggan",
           DB_KOP: "kop", DB_UTANG: "utang", DB_LOCKS: "locks",
           DB_PAYMENT_STATUS: "payment_status", DB_INVOICE_NUMBERS: "invoice_numbers",
-          DB_INVOICE_COUNTER: "invoice_counter", DB_BACKUP_HISTORY: "backup_history"
+          DB_INVOICE_COUNTER: "invoice_counter", DB_BACKUP_HISTORY: "backup_history",
+          DB_LINEN_PELANGGAN: "linen_pelanggan"
         };
         for (const [key, value] of Object.entries(json.data)) {
           const table = mapTable[key]; if (!table) continue;
@@ -1987,6 +2149,15 @@ async function handleFileImport(input) {
             supabaseRows = Object.entries(value).map(([k, v]) => ({ key: k, is_locked: v }));
           } else if (table === "payment_status") {
             supabaseRows = Object.entries(value).map(([k, v]) => ({ key: k, is_paid: v }));
+          } else if (table === "linen_pelanggan") {
+            supabaseRows = [];
+            Object.entries(value).forEach(([pid, list]) => {
+              if (Array.isArray(list)) {
+                list.forEach((item) => {
+                  supabaseRows.push({ pelanggan_id: parseInt(pid), linen_id: item.linenId, urutan: item.urutan });
+                });
+              }
+            });
           } else if (table === "invoice_numbers") {
             supabaseRows = Object.entries(value).map(([k, v]) => ({ cache_key: k, nomor: v }));
           } else if (table === "invoice_counter") {
