@@ -248,6 +248,19 @@ function terbilang(angka) {
   return (terbilang(Math.floor(angka / 1e9)) + " milyar " + terbilang(angka % 1e9));
 }
 function generateNotaId(tgl) { return `${tgl.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`; }
+
+// ==================== HELPER: BUTTON LOADING STATE ====================
+function setBtnLoading(btn, loading) {
+  if (!btn) return;
+  if (loading) {
+    btn.classList.add('loading');
+    btn.disabled = true;
+  } else {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
 function namaPelangganById(id) { const p = pelangganList.find((p) => p.id === id); return p ? p.name : ""; }
 function normalizeNota(n) {
   if (!n) return n;
@@ -383,40 +396,46 @@ function renderFormLinenInput() {
 
 
 async function simpanNotaSistem() {
-  const tgl = document.getElementById("notaTanggal").value;
-  if (!tgl) { toast("Pilih tanggal!", "warning"); return; }
-  const pelName = document.getElementById("pelangganSelect").value; const pData = pelangganList.find((p) => p.name === pelName);
-  const jenis = document.getElementById("jenisNota").value;
-  let items = [], total = 0;
-  if (pData && pData.type === "RS") {
-    const berat = parseFloat(document.getElementById("beratRS").value) || 0;
-    if (berat <= 0) { toast("Berat harus lebih dari 0 KG!", "warning"); return; }
-    total = Math.floor(berat * pData.tarifRS);
-    items.push({ idMaster: 0, name: "Cucian RS (Kiloan)", qty: berat, unit: "KG", basePrice: pData.tarifRS, subtotal: total });
-  } else {
-    let hasNegative = false;
-    document.querySelectorAll(".linen-item-qty").forEach((inp) => {
-      const qty = parseInt(inp.value) || 0;
-      if (qty < 0) hasNegative = true;
-      if (qty > 0) {
-        const price = parseInt(inp.getAttribute("data-price")), name = inp.getAttribute("data-name"), idMaster = parseInt(inp.getAttribute("data-id"));
-        const sub = Math.floor(qty * price); total += sub;
-        items.push({ idMaster, name, qty, unit: "Pcs", basePrice: price, subtotal: sub });
-      }
-    });
-    if (hasNegative) { toast("Jumlah item tidak boleh negatif!", "warning"); return; }
-    if (total <= 0) { toast("Masukkan jumlah item!", "warning"); return; }
-    if (pData && pData.type === "HOTEL" && pData.billingSystem === "FLAT" && jenis === "FLAT") { total = 0; items.forEach((it) => (it.subtotal = 0)); toast("Nota FLAT disimpan (total 0).", "info", 2500); }
+  const btn = document.getElementById('btnSimpanNota');
+  setBtnLoading(btn, true);
+  try {
+    const tgl = document.getElementById("notaTanggal").value;
+    if (!tgl) { toast("Pilih tanggal!", "warning"); return; }
+    const pelName = document.getElementById("pelangganSelect").value; const pData = pelangganList.find((p) => p.name === pelName);
+    const jenis = document.getElementById("jenisNota").value;
+    let items = [], total = 0;
+    if (pData && pData.type === "RS") {
+      const berat = parseFloat(document.getElementById("beratRS").value) || 0;
+      if (berat <= 0) { toast("Berat harus lebih dari 0 KG!", "warning"); return; }
+      total = Math.floor(berat * pData.tarifRS);
+      items.push({ idMaster: 0, name: "Cucian RS (Kiloan)", qty: berat, unit: "KG", basePrice: pData.tarifRS, subtotal: total });
+    } else {
+      let hasNegative = false;
+      document.querySelectorAll(".linen-item-qty").forEach((inp) => {
+        const qty = parseInt(inp.value) || 0;
+        if (qty < 0) hasNegative = true;
+        if (qty > 0) {
+          const price = parseInt(inp.getAttribute("data-price")), name = inp.getAttribute("data-name"), idMaster = parseInt(inp.getAttribute("data-id"));
+          const sub = Math.floor(qty * price); total += sub;
+          items.push({ idMaster, name, qty, unit: "Pcs", basePrice: price, subtotal: sub });
+        }
+      });
+      if (hasNegative) { toast("Jumlah item tidak boleh negatif!", "warning"); return; }
+      if (total <= 0) { toast("Masukkan jumlah item!", "warning"); return; }
+      if (pData && pData.type === "HOTEL" && pData.billingSystem === "FLAT" && jenis === "FLAT") { total = 0; items.forEach((it) => (it.subtotal = 0)); toast("Nota FLAT disimpan (total 0).", "info", 2500); }
+    }
+    const notaId = generateNotaId(tgl);
+    const newNota = { nota_id: notaId, tanggal: tgl, pelanggan_id: pData.id, jenis, total, items: JSON.parse(JSON.stringify(items)) };
+    const { error } = await db.from("nota").insert([newNota]);
+    if (error) { console.error("Gagal menyimpan nota:", error); toast("Gagal menyimpan nota. Silakan coba lagi.", "error"); return; }
+    toast(`Transaksi ${notaId} berhasil!`);
+    document.getElementById("beratRS").value = ""; document.querySelectorAll(".linen-item-qty").forEach((i) => (i.value = 0));
+    await refreshDataSistem(); // FIX: Sinkronisasi data ke localStorage setelah insert
+    await cariNotaSistem();
+    await hitungMenejemenKeuangan();
+  } finally {
+    setBtnLoading(btn, false);
   }
-  const notaId = generateNotaId(tgl);
-  const newNota = { nota_id: notaId, tanggal: tgl, pelanggan_id: pData.id, jenis, total, items: JSON.parse(JSON.stringify(items)) };
-  const { error } = await db.from("nota").insert([newNota]);
-  if (error) { console.error("Gagal menyimpan nota:", error); toast("Gagal menyimpan nota. Silakan coba lagi.", "error"); return; }
-  toast(`Transaksi ${notaId} berhasil!`);
-  document.getElementById("beratRS").value = ""; document.querySelectorAll(".linen-item-qty").forEach((i) => (i.value = 0));
-  await refreshDataSistem(); // FIX: Sinkronisasi data ke localStorage setelah insert
-  await cariNotaSistem();
-  await hitungMenejemenKeuangan();
 }
 
 async function cariNotaSistem() {
@@ -436,7 +455,7 @@ async function cariNotaSistem() {
   const mapNama = {}; pelangganList.forEach((p) => { mapNama[p.id] = p.name; });
   tbody.innerHTML = hasil.map((nota) => {
     const namaPel = mapNama[nota.pelanggan_id] || "?";
-    let aksi = `<button class="btn-sm btn-primary" onclick="bukaModalDetail(${nota.id})">Detail</button> <button class="btn-sm btn-secondary" onclick="bukaModalEditLinen(${nota.id})">Edit</button>`;
+    let aksi = `<button class="btn-sm btn-primary" onclick="bukaModalDetail(${nota.id})">Detail</button> <button class="btn-sm btn-primary" onclick="bukaModalEditLinen(${nota.id})">Edit</button>`;
     if (currentUserRole === "admin") aksi += ` <button class="btn-sm btn-danger" onclick="hapusNotaDariInvoice(${nota.id},'rekap')">Hapus</button>`;
     return `<tr><td><strong>${nota.nota_id}</strong></td><td>${nota.tanggal}</td><td>${namaPel}</td><td>${nota.jenis}</td><td><strong>${fmtRp(nota.total)}</strong></td><td>${aksi}</td></tr>`;
   }).join("");
@@ -1301,8 +1320,8 @@ async function hitungMenejemenKeuangan() {
     } else {
       tbody.innerHTML = biayaFiltered.map((b) => {
         const status = b.lunas ? '<span class="badge-status status-paid">LUNAS</span>' : '<span class="badge-status status-unpaid">BELUM LUNAS</span>';
-        const btnLunas = b.lunas ? "" : `<button class="btn-sm btn-primary" onclick="tandaiLunasBiaya(${b.id})">Tandai Lunas</button>`;
-        return `<tr><td>${b.tanggal}</td><td>${b.kategori}</td><td>${fmtRp(b.nominal)}</td><td>${status}</td><td><button class="btn-sm btn-secondary" onclick="bukaEditBiaya(${b.id})">Edit</button> <button class="btn-sm btn-danger" onclick="hapusBiaya(${b.id})">Hapus</button> ${btnLunas}</td></tr>`;
+        const btnLunas = b.lunas ? "" : `<button class="btn-sm btn-success" onclick="tandaiLunasBiaya(${b.id})">Tandai Lunas</button>`;
+        return `<tr><td>${b.tanggal}</td><td>${b.kategori}</td><td>${fmtRp(b.nominal)}</td><td>${status}</td><td><button class="btn-sm btn-primary" onclick="bukaEditBiaya(${b.id})">Edit</button> <button class="btn-sm btn-danger" onclick="hapusBiaya(${b.id})">Hapus</button> ${btnLunas}</td></tr>`;
       }).join("");
     }
   } catch (err) { console.error("Gagal menghitung keuangan:", err); toast("Gagal menghitung keuangan. Periksa koneksi.", "error"); }
@@ -1384,15 +1403,21 @@ async function cetakLaporan() {
 }
 
 async function simpanBiayaOperasional() {
-  const tgl = document.getElementById("expTanggal").value;
-  const kat = document.getElementById("expKategori").value === "LAIN-LAIN" ? document.getElementById("expKategoriCustom").value.toUpperCase() : document.getElementById("expKategori").value;
-  const nominal = parseCurrencyValue(document.getElementById("expNominal").value);
-  const lunas = document.getElementById("expLunas").checked;
-  if (!tgl || !kat || nominal <= 0) { toast("Data tidak lengkap!", "warning"); return; }
-  const { error } = await db.from("biaya").insert([{ tanggal: tgl, kategori: kat, nominal, lunas }]);
-  if (error) { console.error("Gagal menyimpan biaya:", error); toast("Gagal menyimpan biaya.", "error"); return; }
-  document.getElementById("expNominal").value = ""; toast("Biaya disimpan!", "success");
-  await hitungMenejemenKeuangan();
+  const btn = document.getElementById('btnSimpanBiaya');
+  setBtnLoading(btn, true);
+  try {
+    const tgl = document.getElementById("expTanggal").value;
+    const kat = document.getElementById("expKategori").value === "LAIN-LAIN" ? document.getElementById("expKategoriCustom").value.toUpperCase() : document.getElementById("expKategori").value;
+    const nominal = parseCurrencyValue(document.getElementById("expNominal").value);
+    const lunas = document.getElementById("expLunas").checked;
+    if (!tgl || !kat || nominal <= 0) { toast("Data tidak lengkap!", "warning"); return; }
+    const { error } = await db.from("biaya").insert([{ tanggal: tgl, kategori: kat, nominal, lunas }]);
+    if (error) { console.error("Gagal menyimpan biaya:", error); toast("Gagal menyimpan biaya.", "error"); return; }
+    document.getElementById("expNominal").value = ""; toast("Biaya disimpan!", "success");
+    await hitungMenejemenKeuangan();
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 async function resetFilterExp() { await hitungMenejemenKeuangan(); }
@@ -1411,13 +1436,19 @@ async function bukaEditBiaya(id) {
 function toggleEditCustomBiaya() { document.getElementById("editGroupCustomBiaya").style.display = document.getElementById("editBiayaKategori").value === "LAIN-LAIN" ? "block" : "none"; }
 
 async function simpanEditBiaya() {
-  const id = parseInt(document.getElementById("editBiayaId").value);
-  const tanggal = document.getElementById("editBiayaTanggal").value;
-  const nominal = parseCurrencyValue(document.getElementById("editBiayaNominal").value);
-  const kategori = document.getElementById("editBiayaKategori").value === "LAIN-LAIN" ? document.getElementById("editBiayaCustomText").value.toUpperCase() : document.getElementById("editBiayaKategori").value;
-  const { error } = await db.from("biaya").update({ tanggal, kategori, nominal }).eq("id", id);
-  if (error) { console.error("Gagal mengupdate biaya:", error); toast("Gagal mengupdate biaya.", "error"); return; }
-  tutupModalEditBiaya(); toast("Pengeluaran diupdate!", "success"); await hitungMenejemenKeuangan();
+  const btn = document.getElementById('btnSimpanEditBiaya');
+  setBtnLoading(btn, true);
+  try {
+    const id = parseInt(document.getElementById("editBiayaId").value);
+    const tanggal = document.getElementById("editBiayaTanggal").value;
+    const nominal = parseCurrencyValue(document.getElementById("editBiayaNominal").value);
+    const kategori = document.getElementById("editBiayaKategori").value === "LAIN-LAIN" ? document.getElementById("editBiayaCustomText").value.toUpperCase() : document.getElementById("editBiayaKategori").value;
+    const { error } = await db.from("biaya").update({ tanggal, kategori, nominal }).eq("id", id);
+    if (error) { console.error("Gagal mengupdate biaya:", error); toast("Gagal mengupdate biaya.", "error"); return; }
+    tutupModalEditBiaya(); toast("Pengeluaran diupdate!", "success"); await hitungMenejemenKeuangan();
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 function tutupModalEditBiaya() { document.getElementById("editBiayaModal").style.display = "none"; }
@@ -1467,54 +1498,60 @@ function onEditJenisChange() {
 }
 
 async function simpanPerubahanQtyNota() {
-  const id = parseInt(document.getElementById("editNotaTargetId").value);
-  const { data: notaList, error: fetchError } = await db.from("nota").select("*").eq("id", id);
-  if (fetchError || !notaList || notaList.length === 0) { toast("Nota tidak ditemukan!", "error"); return; }
-  const nota = notaList[0];
-  const pData = pelangganList.find((p) => p.id === nota.pelanggan_id);
-  if (!pData) { toast("Data pelanggan tidak ditemukan!", "error"); return; }
-  nota.jenis = document.getElementById("editNotaJenisSelect").value;
-  const jData = jenisNotaList.find((j) => j.name === nota.jenis);
-  const mult = jData ? jData.multiplier : 1;
-  let total = 0;
-  if (pData.type === "HOTEL" && pData.billingSystem === "FLAT" && nota.jenis === "FLAT") {
-    const items = [];
-    document.querySelectorAll(".modal-edit-qty").forEach((inp) => {
-      const qty = parseInt(inp.value) || 0;
-      if (qty > 0) {
-        const mid = parseInt(inp.getAttribute("data-masterid"));
-        items.push({ idMaster: mid, name: masterLinen.find((m) => m.id === mid)?.name || "", qty, unit: "Pcs", basePrice: 0, subtotal: 0 });
-      }
-    });
-    nota.items = items; total = 0;
-  } else if (pData.type === "RS") {
-    const kg = parseFloat(document.querySelector(".modal-edit-qty")?.value) || 0;
-    if (kg <= 0) { toast("Berat harus lebih dari 0 KG!", "warning"); return; }
-    total = Math.floor(kg * pData.tarifRS);
-    nota.items = [{ idMaster: 0, name: "Cucian RS", qty: kg, unit: "KG", basePrice: pData.tarifRS, subtotal: total }];
-  } else {
-    const items = [];
-    let hasNegative = false;
-    document.querySelectorAll(".modal-edit-qty").forEach((inp) => {
-      const qty = parseInt(inp.value) || 0;
-      if (qty < 0) hasNegative = true;
-      if (qty > 0) {
-        const mid = parseInt(inp.getAttribute("data-masterid"));
-        const price = getHargaPerPelanggan(pData.id, mid, mult);
-        const sub = Math.floor(qty * price); total += sub;
-        items.push({ idMaster: mid, name: masterLinen.find((m) => m.id === mid)?.name || "", qty, unit: "Pcs", basePrice: price, subtotal: sub });
-      }
-    });
-    if (hasNegative) { toast("Jumlah item tidak boleh negatif!", "warning"); return; }
-    if (items.length === 0) { toast("Masukkan minimal satu item!", "warning"); return; }
-    nota.items = items;
+  const btn = document.getElementById('btnSimpanEditNota');
+  setBtnLoading(btn, true);
+  try {
+    const id = parseInt(document.getElementById("editNotaTargetId").value);
+    const { data: notaList, error: fetchError } = await db.from("nota").select("*").eq("id", id);
+    if (fetchError || !notaList || notaList.length === 0) { toast("Nota tidak ditemukan!", "error"); return; }
+    const nota = notaList[0];
+    const pData = pelangganList.find((p) => p.id === nota.pelanggan_id);
+    if (!pData) { toast("Data pelanggan tidak ditemukan!", "error"); return; }
+    nota.jenis = document.getElementById("editNotaJenisSelect").value;
+    const jData = jenisNotaList.find((j) => j.name === nota.jenis);
+    const mult = jData ? jData.multiplier : 1;
+    let total = 0;
+    if (pData.type === "HOTEL" && pData.billingSystem === "FLAT" && nota.jenis === "FLAT") {
+      const items = [];
+      document.querySelectorAll(".modal-edit-qty").forEach((inp) => {
+        const qty = parseInt(inp.value) || 0;
+        if (qty > 0) {
+          const mid = parseInt(inp.getAttribute("data-masterid"));
+          items.push({ idMaster: mid, name: masterLinen.find((m) => m.id === mid)?.name || "", qty, unit: "Pcs", basePrice: 0, subtotal: 0 });
+        }
+      });
+      nota.items = items; total = 0;
+    } else if (pData.type === "RS") {
+      const kg = parseFloat(document.querySelector(".modal-edit-qty")?.value) || 0;
+      if (kg <= 0) { toast("Berat harus lebih dari 0 KG!", "warning"); return; }
+      total = Math.floor(kg * pData.tarifRS);
+      nota.items = [{ idMaster: 0, name: "Cucian RS", qty: kg, unit: "KG", basePrice: pData.tarifRS, subtotal: total }];
+    } else {
+      const items = [];
+      let hasNegative = false;
+      document.querySelectorAll(".modal-edit-qty").forEach((inp) => {
+        const qty = parseInt(inp.value) || 0;
+        if (qty < 0) hasNegative = true;
+        if (qty > 0) {
+          const mid = parseInt(inp.getAttribute("data-masterid"));
+          const price = getHargaPerPelanggan(pData.id, mid, mult);
+          const sub = Math.floor(qty * price); total += sub;
+          items.push({ idMaster: mid, name: masterLinen.find((m) => m.id === mid)?.name || "", qty, unit: "Pcs", basePrice: price, subtotal: sub });
+        }
+      });
+      if (hasNegative) { toast("Jumlah item tidak boleh negatif!", "warning"); return; }
+      if (items.length === 0) { toast("Masukkan minimal satu item!", "warning"); return; }
+      nota.items = items;
+    }
+    nota.total = total;
+    const { error: updateError } = await db.from("nota").update({ jenis: nota.jenis, total: nota.total, items: nota.items }).eq("id", id);
+    if (updateError) { console.error("Gagal mengupdate nota:", updateError); toast("Gagal mengupdate nota.", "error"); return; }
+    toast("Nota diupdate!", "success"); tutupModalEdit();
+    await refreshDataSistem(); // FIX: Sinkronisasi data ke localStorage setelah edit
+    await cariNotaSistem(); await hitungMenejemenKeuangan();
+  } finally {
+    setBtnLoading(btn, false);
   }
-  nota.total = total;
-  const { error: updateError } = await db.from("nota").update({ jenis: nota.jenis, total: nota.total, items: nota.items }).eq("id", id);
-  if (updateError) { console.error("Gagal mengupdate nota:", updateError); toast("Gagal mengupdate nota.", "error"); return; }
-  toast("Nota diupdate!", "success"); tutupModalEdit();
-  await refreshDataSistem(); // FIX: Sinkronisasi data ke localStorage setelah edit
-  await cariNotaSistem(); await hitungMenejemenKeuangan();
 }
 
 async function hitungTotalEditPreview() {
@@ -1541,21 +1578,27 @@ function tutupModalEdit() { document.getElementById("editLinenModal").style.disp
 
 function renderMasterLinenTable() {
   const tbody = document.getElementById("tabelMasterLinen"); if (!tbody) return;
-  tbody.innerHTML = masterLinen.map((m, i) => `<tr><td>${i + 1}</td><td><input type="text" id="linenName-${m.id}" value="${m.name}" style="width:100%;padding:6px;"></td><td style="text-align:center;"><button class="btn btn-secondary btn-sm" onclick="updateLinen(${m.id})">Update</button> <button class="btn btn-danger btn-sm" onclick="hapusLinen(${m.id})">Hapus</button></td></tr>`).join("");
+  tbody.innerHTML = masterLinen.map((m, i) => `<tr><td>${i + 1}</td><td><input type="text" id="linenName-${m.id}" value="${m.name}" style="width:100%;padding:6px;"></td><td style="text-align:center;"><button class="btn btn-primary btn-sm" onclick="updateLinen(${m.id})">Update</button> <button class="btn btn-danger btn-sm" onclick="hapusLinen(${m.id})">Hapus</button></td></tr>`).join("");
 }
 
 function renderMasterJenisNotaTable() {
   const tbody = document.getElementById("tabelMasterJenisNota"); if (!tbody) return;
-  tbody.innerHTML = jenisNotaList.map((j, idx) => `<tr><td><input type="text" id="jnName-${idx}" value="${j.name}" style="width:90px;padding:6px;"></td><td><select id="jnMult-${idx}" style="padding:6px;">${[1, 1.5, 2, 2.5, 3, 4].map((v) => `<option value="${v}" ${j.multiplier === v ? "selected" : ""}>${v}x</option>`).join("")}</select></td><td><select id="jnFor-${idx}" style="padding:6px;"><option value="both" ${j.forFlat && j.forReguler ? "selected" : ""}>Flat+Reg</option><option value="flat" ${j.forFlat && !j.forReguler ? "selected" : ""}>Flat</option><option value="reguler" ${!j.forFlat && j.forReguler ? "selected" : ""}>Reguler</option></select></td><td style="text-align:center;"><button class="btn btn-secondary btn-sm" onclick="updateMasterJenisNota(${idx})">Update</button> <button class="btn btn-danger btn-sm" onclick="deleteMasterJenisNota(${idx})">Hapus</button></td></tr>`).join("");
+  tbody.innerHTML = jenisNotaList.map((j, idx) => `<tr><td><input type="text" id="jnName-${idx}" value="${j.name}" style="width:90px;padding:6px;"></td><td><select id="jnMult-${idx}" style="padding:6px;">${[1, 1.5, 2, 2.5, 3, 4].map((v) => `<option value="${v}" ${j.multiplier === v ? "selected" : ""}>${v}x</option>`).join("")}</select></td><td><select id="jnFor-${idx}" style="padding:6px;"><option value="both" ${j.forFlat && j.forReguler ? "selected" : ""}>Flat+Reg</option><option value="flat" ${j.forFlat && !j.forReguler ? "selected" : ""}>Flat</option><option value="reguler" ${!j.forFlat && j.forReguler ? "selected" : ""}>Reguler</option></select></td><td style="text-align:center;"><button class="btn btn-primary btn-sm" onclick="updateMasterJenisNota(${idx})">Update</button> <button class="btn btn-danger btn-sm" onclick="deleteMasterJenisNota(${idx})">Hapus</button></td></tr>`).join("");
 }
 
 async function tambahLinen() {
-  const name = document.getElementById("newLinenName").value.trim();
-  if (!name) return toast("Nama linen wajib!", "warning");
-  const { data, error } = await db.from("master_linen").insert([{ name }]).select();
-  if (error) { console.error("Gagal menambah linen:", error); toast("Gagal menambah linen.", "error"); return; }
-  masterLinen.push({ id: data[0].id, name: data[0].name });
-  renderMasterLinenTable(); renderFormLinenInput(); document.getElementById("newLinenName").value = ""; toast("Linen ditambahkan.");
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const name = document.getElementById("newLinenName").value.trim();
+    if (!name) return toast("Nama linen wajib!", "warning");
+    const { data, error } = await db.from("master_linen").insert([{ name }]).select();
+    if (error) { console.error("Gagal menambah linen:", error); toast("Gagal menambah linen.", "error"); return; }
+    masterLinen.push({ id: data[0].id, name: data[0].name });
+    renderMasterLinenTable(); renderFormLinenInput(); document.getElementById("newLinenName").value = ""; toast("Linen ditambahkan.");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 async function updateLinen(id) {
@@ -1629,24 +1672,30 @@ function renderDaftarPelanggan() {
 }
 
 async function tambahPelangganBaru() {
-  const name = document.getElementById("newPelangganName").value.trim();
-  if (!name) return toast("Nama wajib!", "warning");
-  const type = document.getElementById("newPelangganType").value;
-  const billing = document.getElementById("newPelangganBilling").value;
-  const flatRate = parseCurrencyValue(document.getElementById("newFlatRate").value);
-  const tarifRS = parseCurrencyValue(document.getElementById("newTarifRS").value);
-  const alamat = document.getElementById("newPelangganAlamat").value.trim();
-  const kota = document.getElementById("newPelangganKota").value.trim();
-  const kodeRaw = document.getElementById("newPelangganKode").value.trim().toUpperCase();
-  const kode = kodeRaw || generateKodePelanggan(name);
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const name = document.getElementById("newPelangganName").value.trim();
+    if (!name) return toast("Nama wajib!", "warning");
+    const type = document.getElementById("newPelangganType").value;
+    const billing = document.getElementById("newPelangganBilling").value;
+    const flatRate = parseCurrencyValue(document.getElementById("newFlatRate").value);
+    const tarifRS = parseCurrencyValue(document.getElementById("newTarifRS").value);
+    const alamat = document.getElementById("newPelangganAlamat").value.trim();
+    const kota = document.getElementById("newPelangganKota").value.trim();
+    const kodeRaw = document.getElementById("newPelangganKode").value.trim().toUpperCase();
+    const kode = kodeRaw || generateKodePelanggan(name);
 
-  const { data, error } = await db.from("pelanggan").insert([{ nama: name, kode, tipe: type, billing_system: billing, flat_rate: flatRate, tarif_rs: tarifRS, alamat, kota }]).select();
-  if (error) { console.error("Gagal menambah pelanggan:", error); toast("Gagal menambah pelanggan.", "error"); return; }
-  const newPel = data[0];
-  pelangganList.push({ id: newPel.id, name: newPel.nama, kode: newPel.kode, type: newPel.tipe, billingSystem: newPel.billing_system, flatRate: newPel.flat_rate, tarifRS: newPel.tarif_rs, alamat: newPel.alamat, kota: newPel.kota });
-  renderDaftarPelanggan(); renderPelangganDropdowns();
-  document.getElementById("newPelangganName").value = ""; document.getElementById("newPelangganKode").value = ""; document.getElementById("newFlatRate").value = ""; document.getElementById("newTarifRS").value = ""; document.getElementById("newPelangganAlamat").value = ""; document.getElementById("newPelangganKota").value = "";
-  toast("Pelanggan ditambahkan!");
+    const { data, error } = await db.from("pelanggan").insert([{ nama: name, kode, tipe: type, billing_system: billing, flat_rate: flatRate, tarif_rs: tarifRS, alamat, kota }]).select();
+    if (error) { console.error("Gagal menambah pelanggan:", error); toast("Gagal menambah pelanggan.", "error"); return; }
+    const newPel = data[0];
+    pelangganList.push({ id: newPel.id, name: newPel.nama, kode: newPel.kode, type: newPel.tipe, billingSystem: newPel.billing_system, flatRate: newPel.flat_rate, tarifRS: newPel.tarif_rs, alamat: newPel.alamat, kota: newPel.kota });
+    renderDaftarPelanggan(); renderPelangganDropdowns();
+    document.getElementById("newPelangganName").value = ""; document.getElementById("newPelangganKode").value = ""; document.getElementById("newFlatRate").value = ""; document.getElementById("newTarifRS").value = ""; document.getElementById("newPelangganAlamat").value = ""; document.getElementById("newPelangganKota").value = "";
+    toast("Pelanggan ditambahkan!");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 function autoIsiKodeBaru() {
@@ -1710,64 +1759,70 @@ async function bukaModalEditLinen(id) {
 }
 
 async function simpanDetailPelanggan() {
-  const id = parseInt(document.getElementById("editPelangganId").value);
-  const p = pelangganList.find((p) => p.id === id); if (!p) return;
-  const nama = document.getElementById("editPelangganName").value.trim();
-  const kodeBaru = document.getElementById("editPelangganKode").value.trim().toUpperCase();
-  const kode = kodeBaru || generateKodePelanggan(nama);
-  const tipe = document.getElementById("editPelangganType").value;
-  const billing = document.getElementById("editPelangganBilling").value;
-  const flatRate = parseCurrencyValue(document.getElementById("editFlatRate").value);
-  const tarifRS = parseCurrencyValue(document.getElementById("editTarifRS").value);
-  const alamat = document.getElementById("editPelangganAlamat").value.trim();
-  const kota = document.getElementById("editPelangganKota").value.trim();
-
-  const { error } = await db.from("pelanggan").update({ nama, kode, tipe, billing_system: billing, flat_rate: flatRate, tarif_rs: tarifRS, alamat, kota }).eq("id", id);
-  if (error) { console.error("Gagal mengupdate pelanggan:", error); toast("Gagal mengupdate pelanggan.", "error"); return; }
-
-  const hargaBaru = {};
-  document.querySelectorAll(".harga-input").forEach((inp) => { const linenId = parseInt(inp.dataset.linenId); const harga = parseCurrencyValue(inp.value); hargaBaru[linenId] = harga; });
-  await db.from("harga_pelanggan").delete().eq("pelanggan_id", id);
-  const hargaInsert = Object.entries(hargaBaru).map(([linenId, harga]) => ({ pelanggan_id: id, linen_id: parseInt(linenId), harga }));
-  if (hargaInsert.length > 0) { await db.from("harga_pelanggan").insert(hargaInsert); }
-
-  p.name = nama; p.kode = kode; p.type = tipe; p.billingSystem = billing; p.flatRate = flatRate; p.tarifRS = tarifRS; p.alamat = alamat; p.kota = kota;
-  hargaPelanggan[id] = hargaBaru;
-  localStorage.setItem("DB_HARGA_PELANGGAN", JSON.stringify(hargaPelanggan)); localStorage.setItem("DB_PELANGGAN", JSON.stringify(pelangganList));
-
-  // Simpan urutan linen per-pelanggan dari tabel detail pelanggan
-  const activeLinenList = [];
-  let urutanIndex = 0;
-  document.querySelectorAll("#tabelHargaLinen tr.linen-drag-row").forEach((row) => {
-    const cb = row.querySelector(".linen-active-cb");
-    if (cb && cb.checked) {
-      const linenId = parseInt(cb.dataset.linenId);
-      activeLinenList.push({ linenId, urutan: urutanIndex });
-      urutanIndex++;
-    }
-  });
-  saveLinenPelanggan(id, activeLinenList);
-
-  // Sync ke Supabase tabel 'linen_pelanggan'
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
   try {
-    await db.from("linen_pelanggan").delete().eq("pelanggan_id", id);
-    const linenInsert = activeLinenList.map(item => ({
-      pelanggan_id: id,
-      linen_id: item.linenId,
-      urutan: item.urutan
-    }));
-    if (linenInsert.length > 0) {
-      const { error: syncError } = await db.from("linen_pelanggan").insert(linenInsert);
-      if (syncError) console.error("Gagal sync ke tabel linen_pelanggan Supabase:", syncError);
+    const id = parseInt(document.getElementById("editPelangganId").value);
+    const p = pelangganList.find((p) => p.id === id); if (!p) return;
+    const nama = document.getElementById("editPelangganName").value.trim();
+    const kodeBaru = document.getElementById("editPelangganKode").value.trim().toUpperCase();
+    const kode = kodeBaru || generateKodePelanggan(nama);
+    const tipe = document.getElementById("editPelangganType").value;
+    const billing = document.getElementById("editPelangganBilling").value;
+    const flatRate = parseCurrencyValue(document.getElementById("editFlatRate").value);
+    const tarifRS = parseCurrencyValue(document.getElementById("editTarifRS").value);
+    const alamat = document.getElementById("editPelangganAlamat").value.trim();
+    const kota = document.getElementById("editPelangganKota").value.trim();
+
+    const { error } = await db.from("pelanggan").update({ nama, kode, tipe, billing_system: billing, flat_rate: flatRate, tarif_rs: tarifRS, alamat, kota }).eq("id", id);
+    if (error) { console.error("Gagal mengupdate pelanggan:", error); toast("Gagal mengupdate pelanggan.", "error"); return; }
+
+    const hargaBaru = {};
+    document.querySelectorAll(".harga-input").forEach((inp) => { const linenId = parseInt(inp.dataset.linenId); const harga = parseCurrencyValue(inp.value); hargaBaru[linenId] = harga; });
+    await db.from("harga_pelanggan").delete().eq("pelanggan_id", id);
+    const hargaInsert = Object.entries(hargaBaru).map(([linenId, harga]) => ({ pelanggan_id: id, linen_id: parseInt(linenId), harga }));
+    if (hargaInsert.length > 0) { await db.from("harga_pelanggan").insert(hargaInsert); }
+
+    p.name = nama; p.kode = kode; p.type = tipe; p.billingSystem = billing; p.flatRate = flatRate; p.tarifRS = tarifRS; p.alamat = alamat; p.kota = kota;
+    hargaPelanggan[id] = hargaBaru;
+    localStorage.setItem("DB_HARGA_PELANGGAN", JSON.stringify(hargaPelanggan)); localStorage.setItem("DB_PELANGGAN", JSON.stringify(pelangganList));
+
+    // Simpan urutan linen per-pelanggan dari tabel detail pelanggan
+    const activeLinenList = [];
+    let urutanIndex = 0;
+    document.querySelectorAll("#tabelHargaLinen tr.linen-drag-row").forEach((row) => {
+      const cb = row.querySelector(".linen-active-cb");
+      if (cb && cb.checked) {
+        const linenId = parseInt(cb.dataset.linenId);
+        activeLinenList.push({ linenId, urutan: urutanIndex });
+        urutanIndex++;
+      }
+    });
+    saveLinenPelanggan(id, activeLinenList);
+
+    // Sync ke Supabase tabel 'linen_pelanggan'
+    try {
+      await db.from("linen_pelanggan").delete().eq("pelanggan_id", id);
+      const linenInsert = activeLinenList.map(item => ({
+        pelanggan_id: id,
+        linen_id: item.linenId,
+        urutan: item.urutan
+      }));
+      if (linenInsert.length > 0) {
+        const { error: syncError } = await db.from("linen_pelanggan").insert(linenInsert);
+        if (syncError) console.error("Gagal sync ke tabel linen_pelanggan Supabase:", syncError);
+      }
+    } catch (err) {
+      console.error("Gagal sync Supabase (tabel mungkin belum terbuat):", err);
     }
-  } catch (err) {
-    console.error("Gagal sync Supabase (tabel mungkin belum terbuat):", err);
+
+    const counterVal = parseInt(document.getElementById("editPelangganCounter").value, 10);
+    if (!isNaN(counterVal)) { const tahun = new Date().getFullYear(); await setCounterAwalPelanggan(kode, tahun, counterVal); }
+
+    await refreshDataSistem(); tutupModal("modalDetailPelanggan"); renderDaftarPelanggan(); renderPelangganDropdowns(); renderFormLinenInput(); toast("Pelanggan & harga disimpan.");
+  } finally {
+    setBtnLoading(btn, false);
   }
-
-  const counterVal = parseInt(document.getElementById("editPelangganCounter").value, 10);
-  if (!isNaN(counterVal)) { const tahun = new Date().getFullYear(); await setCounterAwalPelanggan(kode, tahun, counterVal); }
-
-  await refreshDataSistem(); tutupModal("modalDetailPelanggan"); renderDaftarPelanggan(); renderPelangganDropdowns(); renderFormLinenInput(); toast("Pelanggan & harga disimpan.");
 }
 
 function handleEditTipeChange() {
@@ -1824,16 +1879,22 @@ function handleEditBillingChange() {
 
 function renderMasterKaryawanTable() {
   const tbody = document.getElementById("tabelMasterKaryawan");
-  tbody.innerHTML = karyawanList.map((k) => `<tr><td>${k.nama}</td><td>${k.bagian || "-"}</td><td>${k.persentase}%</td><td><button class="btn-sm btn-secondary" onclick="openEditKaryawanModal(${k.id})">Edit</button> <button class="btn-sm btn-danger" onclick="hapusKaryawan(${k.id})">Hapus</button></td></tr>`).join("");
+  tbody.innerHTML = karyawanList.map((k) => `<tr><td>${k.nama}</td><td>${k.bagian || "-"}</td><td>${k.persentase}%</td><td><button class="btn-sm btn-primary" onclick="openEditKaryawanModal(${k.id})">Edit</button> <button class="btn-sm btn-danger" onclick="hapusKaryawan(${k.id})">Hapus</button></td></tr>`).join("");
 }
 
 async function tambahKaryawan() {
-  const nama = document.getElementById("newKaryawanNama").value.trim(); if (!nama) return toast("Nama wajib!", "warning");
-  const bagian = document.getElementById("newKaryawanBagian").value; const persentase = parseFloat(document.getElementById("newKaryawanPersen").value);
-  const { data, error } = await db.from("karyawan").insert([{ nama, bagian, persentase }]).select();
-  if (error) { console.error("Gagal menambah karyawan:", error); toast("Gagal menambah karyawan.", "error"); return; }
-  karyawanList.push({ id: data[0].id, nama, bagian, persentase });
-  renderMasterKaryawanTable(); document.getElementById("newKaryawanNama").value = ""; toast("Karyawan ditambahkan.");
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const nama = document.getElementById("newKaryawanNama").value.trim(); if (!nama) return toast("Nama wajib!", "warning");
+    const bagian = document.getElementById("newKaryawanBagian").value; const persentase = parseFloat(document.getElementById("newKaryawanPersen").value);
+    const { data, error } = await db.from("karyawan").insert([{ nama, bagian, persentase }]).select();
+    if (error) { console.error("Gagal menambah karyawan:", error); toast("Gagal menambah karyawan.", "error"); return; }
+    karyawanList.push({ id: data[0].id, nama, bagian, persentase });
+    renderMasterKaryawanTable(); document.getElementById("newKaryawanNama").value = ""; toast("Karyawan ditambahkan.");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 function openEditKaryawanModal(id) {
@@ -1857,26 +1918,38 @@ async function hapusKaryawan(id) {
 }
 
 async function simpanPengaturanGlobal() {
-  const updates = {
-    tarif_internal_hotel: parseCurrencyValue(document.getElementById("settingTarifHotel").value), ongkos_per_kg: parseCurrencyValue(document.getElementById("settingOngkosPerKg").value), rekening_name: document.getElementById("settingRekeningName").value.trim(), rekening_no: document.getElementById("settingRekeningNo").value.trim(), bank: document.getElementById("settingBank").value.trim(), direktur: document.getElementById("settingDirektur").value.trim(), peralatan: parseCurrencyValue(document.getElementById("settingPeralatan").value),
-  };
-  const { error } = await db.from("pengaturan").update(updates).eq("id", 1);
-  if (error) { console.error("Gagal menyimpan pengaturan:", error); toast("Gagal menyimpan pengaturan.", "error"); return; }
-  pengaturan = { ...pengaturan, ...updates }; toast("Pengaturan disimpan!", "success");
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const updates = {
+      tarif_internal_hotel: parseCurrencyValue(document.getElementById("settingTarifHotel").value), ongkos_per_kg: parseCurrencyValue(document.getElementById("settingOngkosPerKg").value), rekening_name: document.getElementById("settingRekeningName").value.trim(), rekening_no: document.getElementById("settingRekeningNo").value.trim(), bank: document.getElementById("settingBank").value.trim(), direktur: document.getElementById("settingDirektur").value.trim(), peralatan: parseCurrencyValue(document.getElementById("settingPeralatan").value),
+    };
+    const { error } = await db.from("pengaturan").update(updates).eq("id", 1);
+    if (error) { console.error("Gagal menyimpan pengaturan:", error); toast("Gagal menyimpan pengaturan.", "error"); return; }
+    pengaturan = { ...pengaturan, ...updates }; toast("Pengaturan disimpan!", "success");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 async function simpanKopSurat() {
-  const updates = { nama: document.getElementById("kopNama").value.trim(), alamat: document.getElementById("kopAlamat").value.trim(), telepon: document.getElementById("kopTelepon").value.trim(), email: document.getElementById("kopEmail").value.trim(), kontak: document.getElementById("kopContact").value.trim() };
-  const { error } = await db.from("kop").update(updates).eq("id", 1);
-  if (error) { console.error("Gagal menyimpan kop surat:", error); toast("Gagal menyimpan kop surat.", "error"); return; }
-  localStorage.setItem("DB_KOP", JSON.stringify(updates));
-  const fileInput = document.getElementById("fileLogoInput");
-  if (fileInput.files && fileInput.files[0]) {
-    const file = fileInput.files[0];
-    if (file.size > 2 * 1024 * 1024) { toast("Ukuran logo maksimal 2 MB.", "warning"); return; }
-    await saveLogoToIndexedDB(file);
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const updates = { nama: document.getElementById("kopNama").value.trim(), alamat: document.getElementById("kopAlamat").value.trim(), telepon: document.getElementById("kopTelepon").value.trim(), email: document.getElementById("kopEmail").value.trim(), kontak: document.getElementById("kopContact").value.trim() };
+    const { error } = await db.from("kop").update(updates).eq("id", 1);
+    if (error) { console.error("Gagal menyimpan kop surat:", error); toast("Gagal menyimpan kop surat.", "error"); return; }
+    localStorage.setItem("DB_KOP", JSON.stringify(updates));
+    const fileInput = document.getElementById("fileLogoInput");
+    if (fileInput.files && fileInput.files[0]) {
+      const file = fileInput.files[0];
+      if (file.size > 2 * 1024 * 1024) { toast("Ukuran logo maksimal 2 MB.", "warning"); return; }
+      await saveLogoToIndexedDB(file);
+    }
+    toast("Kop surat disimpan.", "success"); previewLogoFromDB();
+  } finally {
+    setBtnLoading(btn, false);
   }
-  toast("Kop surat disimpan.", "success"); previewLogoFromDB();
 }
 
 async function handleLogoUpload(input) {
@@ -1905,12 +1978,18 @@ function renderAbsensiTable() {
 }
 
 async function simpanAbsensi() {
-  const tgl = document.getElementById("absensiTanggal").value; const promises = [];
-  document.querySelectorAll(".absen-status").forEach((sel) => {
-    const kid = parseInt(sel.getAttribute("data-kid"));
-    promises.push(db.from("absensi").delete().eq("tanggal", tgl).eq("karyawan_id", kid).then(() => db.from("absensi").insert([{ tanggal: tgl, karyawan_id: kid, status: sel.value }])));
-  });
-  await Promise.all(promises); await refreshDataSistem(); toast("Absensi tersimpan!", "success");
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const tgl = document.getElementById("absensiTanggal").value; const promises = [];
+    document.querySelectorAll(".absen-status").forEach((sel) => {
+      const kid = parseInt(sel.getAttribute("data-kid"));
+      promises.push(db.from("absensi").delete().eq("tanggal", tgl).eq("karyawan_id", kid).then(() => db.from("absensi").insert([{ tanggal: tgl, karyawan_id: kid, status: sel.value }])));
+    });
+    await Promise.all(promises); await refreshDataSistem(); toast("Absensi tersimpan!", "success");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 function hitungKgHarian(transaksiPeriode, tarifInternal, tglMulai, tglSelesai) {
@@ -1955,7 +2034,7 @@ async function tampilkanListGajiBaru() {
   _hasilGaji = hasil;
   const container = document.getElementById("listGajiContainer");
   container.innerHTML = `<table class="linen-table"><tr><th>Nama</th><th>Upah</th><th>Insentif</th><th>Lembur</th><th>Potongan</th><th>Diterima</th><th>Aksi</th></tr>` +
-    hasil.map((h) => `<tr><td>${h.karyawan.nama}</td><td>${fmtRp(h.totalUpah)}</td><td>${fmtRp(h.insentif)}</td><td>${fmtRp(h.lembur)}</td><td>${fmtRp(h.potongan)}</td><td><strong>${fmtRp(h.totalDiterima)}</strong></td><td><button class="btn-sm btn-primary" onclick="viewSlipGaji(${h.karyawan.id},'${tglMulai}','${tglSelesai}')">Slip</button> <button class="btn-sm btn-success" onclick="downloadSlipGaji(${h.karyawan.id},'${tglMulai}','${tglSelesai}')">⬇️ Download</button> <button class="btn-sm btn-secondary" onclick="editGajiKaryawan(${h.karyawan.id},'${tglMulai}','${tglSelesai}')">Edit</button></td></tr>`).join("") + "</table>";
+    hasil.map((h) => `<tr><td>${h.karyawan.nama}</td><td>${fmtRp(h.totalUpah)}</td><td>${fmtRp(h.insentif)}</td><td>${fmtRp(h.lembur)}</td><td>${fmtRp(h.potongan)}</td><td><strong>${fmtRp(h.totalDiterima)}</strong></td><td><button class="btn-sm btn-primary" onclick="viewSlipGaji(${h.karyawan.id},'${tglMulai}','${tglSelesai}')">Slip</button> <button class="btn-sm btn-success" onclick="downloadSlipGaji(${h.karyawan.id},'${tglMulai}','${tglSelesai}')">⬇️ Download</button> <button class="btn-sm btn-primary" onclick="editGajiKaryawan(${h.karyawan.id},'${tglMulai}','${tglSelesai}')">Edit</button></td></tr>`).join("") + "</table>";
 }
 
 function editGajiKaryawan(kId, mulai, selesai) {
@@ -1971,15 +2050,21 @@ function editGajiKaryawan(kId, mulai, selesai) {
 }
 
 async function simpanEditGajiBaru() {
-  const updates = { insentif: parseCurrencyValue(document.getElementById("editGajiInsentif").value), lembur: parseCurrencyValue(document.getElementById("editGajiLembur").value), potongan: parseCurrencyValue(document.getElementById("editGajiPotongan").value) };
-  if (_gajiAktif.gajiId) {
-    const { error } = await db.from("gaji").update(updates).eq("id", _gajiAktif.gajiId);
-    if (error) { console.error("Gagal mengupdate gaji:", error); toast("Gagal mengupdate gaji.", "error"); return; }
-  } else {
-    const { error } = await db.from("gaji").insert([{ karyawan_id: _gajiAktif.karyawanId, periode_mulai: _gajiAktif.periodeMulai, periode_selesai: _gajiAktif.periodeSelesai, ...updates }]);
-    if (error) { console.error("Gagal menyimpan gaji:", error); toast("Gagal menyimpan gaji.", "error"); return; }
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const updates = { insentif: parseCurrencyValue(document.getElementById("editGajiInsentif").value), lembur: parseCurrencyValue(document.getElementById("editGajiLembur").value), potongan: parseCurrencyValue(document.getElementById("editGajiPotongan").value) };
+    if (_gajiAktif.gajiId) {
+      const { error } = await db.from("gaji").update(updates).eq("id", _gajiAktif.gajiId);
+      if (error) { console.error("Gagal mengupdate gaji:", error); toast("Gagal mengupdate gaji.", "error"); return; }
+    } else {
+      const { error } = await db.from("gaji").insert([{ karyawan_id: _gajiAktif.karyawanId, periode_mulai: _gajiAktif.periodeMulai, periode_selesai: _gajiAktif.periodeSelesai, ...updates }]);
+      if (error) { console.error("Gagal menyimpan gaji:", error); toast("Gagal menyimpan gaji.", "error"); return; }
+    }
+    tutupEditGaji(); await tampilkanListGajiBaru(); toast("Data gaji disimpan.", "success");
+  } finally {
+    setBtnLoading(btn, false);
   }
-  tutupEditGaji(); await tampilkanListGajiBaru(); toast("Data gaji disimpan.", "success");
 }
 function tutupEditGaji() { document.getElementById("editGajiModal").style.display = "none"; }
 
@@ -2002,89 +2087,113 @@ function renderBackupStatus() {
 }
 
 async function backupBulan(bln) {
-  if (!await window.customConfirm(`Backup & hapus transaksi bulan ${bln}? Data master tetap aman.`)) return;
-  const allData = { metadata: { version: "v24" }, data: {} };
-  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
-  allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
-  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_${bln}.json`; a.click();
-  // Hapus dari Supabase
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
   try {
-    await db.from("nota").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
-    await db.from("biaya").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
-    await db.from("absensi").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
-    await db.from("gaji").delete().gte("periode_mulai", `${bln}-01`).lte("periode_mulai", `${bln}-31`);
-    await db.from("backup_history").delete().eq("bulan", bln);
-    await db.from("backup_history").insert([{ bulan: bln }]);
-  } catch (err) { console.error("Gagal menghapus dari Supabase:", err); toast("Gagal sinkronisasi hapus ke Supabase.", "error"); }
-  let dbNota = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
-  dbNota = dbNota.filter((n) => !n.tanggal || n.tanggal.substring(0, 7) !== bln); localStorage.setItem("DB_NOTA", JSON.stringify(dbNota));
-  ["DB_BIAYA", "DB_ABSENSI", "DB_GAJI"].forEach((k) => {
-    let arr = JSON.parse(localStorage.getItem(k)) || []; arr = arr.filter((item) => { const tgl = item.tanggal || ""; return !tgl.startsWith(bln); }); localStorage.setItem(k, JSON.stringify(arr));
-  });
-  const history = getBackupHistory(); if (!history.includes(bln)) { history.push(bln); saveBackupHistory(history); }
-  await refreshDataSistem(); renderBackupStatus(); toast(`Backup bulan ${bln} berhasil.`, "success");
+    if (!await window.customConfirm(`Backup & hapus transaksi bulan ${bln}? Data master tetap aman.`)) return;
+    const allData = { metadata: { version: "v24" }, data: {} };
+    const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
+    allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
+    const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_${bln}.json`; a.click();
+    // Hapus dari Supabase
+    try {
+      await db.from("nota").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
+      await db.from("biaya").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
+      await db.from("absensi").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
+      await db.from("gaji").delete().gte("periode_mulai", `${bln}-01`).lte("periode_mulai", `${bln}-31`);
+      await db.from("backup_history").delete().eq("bulan", bln);
+      await db.from("backup_history").insert([{ bulan: bln }]);
+    } catch (err) { console.error("Gagal menghapus dari Supabase:", err); toast("Gagal sinkronisasi hapus ke Supabase.", "error"); }
+    let dbNota = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
+    dbNota = dbNota.filter((n) => !n.tanggal || n.tanggal.substring(0, 7) !== bln); localStorage.setItem("DB_NOTA", JSON.stringify(dbNota));
+    ["DB_BIAYA", "DB_ABSENSI", "DB_GAJI"].forEach((k) => {
+      let arr = JSON.parse(localStorage.getItem(k)) || []; arr = arr.filter((item) => { const tgl = item.tanggal || ""; return !tgl.startsWith(bln); }); localStorage.setItem(k, JSON.stringify(arr));
+    });
+    const history = getBackupHistory(); if (!history.includes(bln)) { history.push(bln); saveBackupHistory(history); }
+    await refreshDataSistem(); renderBackupStatus(); toast(`Backup bulan ${bln} berhasil.`, "success");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 async function backupSemuaBulanBelum() {
-  const dbNota = JSON.parse(localStorage.getItem("DB_NOTA")) || []; const history = getBackupHistory();
-  const bulanSet = new Set(); dbNota.forEach((n) => { if (n.tanggal) bulanSet.add(n.tanggal.substring(0, 7)); });
-  const belum = Array.from(bulanSet).filter((bln) => !history.includes(bln));
-  if (belum.length === 0) { toast("Semua bulan sudah di-backup.", "info"); return; }
-  if (!await window.customConfirm(`Backup & hapus ${belum.length} bulan yang belum di-backup? (${belum.join(", ")})`)) return;
-  const allData = { metadata: { version: "v24" }, data: {} };
-  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
-  allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
-  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_${belum.join("_")}.json`; a.click();
-  // Hapus dari Supabase per bulan
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
   try {
-    for (const b of belum) {
-      await db.from("nota").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
-      await db.from("biaya").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
-      await db.from("absensi").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
-      await db.from("gaji").delete().gte("periode_mulai", `${b}-01`).lte("periode_mulai", `${b}-31`);
-      await db.from("backup_history").delete().eq("bulan", b);
-      await db.from("backup_history").insert([{ bulan: b }]);
-    }
-  } catch (err) { console.error("Gagal menghapus dari Supabase:", err); toast("Gagal sinkronisasi hapus ke Supabase.", "error"); }
-  let dbNota2 = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
-  dbNota2 = dbNota2.filter((n) => !n.tanggal || !belum.includes(n.tanggal.substring(0, 7))); localStorage.setItem("DB_NOTA", JSON.stringify(dbNota2));
-  ["DB_BIAYA", "DB_ABSENSI", "DB_GAJI"].forEach((k) => {
-    let arr = JSON.parse(localStorage.getItem(k)) || []; arr = arr.filter((item) => { const tgl = item.tanggal || ""; return !belum.some((b) => tgl.startsWith(b)); }); localStorage.setItem(k, JSON.stringify(arr));
-  });
-  const newHistory = getBackupHistory(); belum.forEach((b) => { if (!newHistory.includes(b)) newHistory.push(b); }); saveBackupHistory(newHistory);
-  await refreshDataSistem(); renderBackupStatus(); toast(`Backup ${belum.length} bulan berhasil!`, "success");
+    const dbNota = JSON.parse(localStorage.getItem("DB_NOTA")) || []; const history = getBackupHistory();
+    const bulanSet = new Set(); dbNota.forEach((n) => { if (n.tanggal) bulanSet.add(n.tanggal.substring(0, 7)); });
+    const belum = Array.from(bulanSet).filter((bln) => !history.includes(bln));
+    if (belum.length === 0) { toast("Semua bulan sudah di-backup.", "info"); return; }
+    if (!await window.customConfirm(`Backup & hapus ${belum.length} bulan yang belum di-backup? (${belum.join(", ")})`)) return;
+    const allData = { metadata: { version: "v24" }, data: {} };
+    const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
+    allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
+    const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_${belum.join("_")}.json`; a.click();
+    // Hapus dari Supabase per bulan
+    try {
+      for (const b of belum) {
+        await db.from("nota").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
+        await db.from("biaya").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
+        await db.from("absensi").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
+        await db.from("gaji").delete().gte("periode_mulai", `${b}-01`).lte("periode_mulai", `${b}-31`);
+        await db.from("backup_history").delete().eq("bulan", b);
+        await db.from("backup_history").insert([{ bulan: b }]);
+      }
+    } catch (err) { console.error("Gagal menghapus dari Supabase:", err); toast("Gagal sinkronisasi hapus ke Supabase.", "error"); }
+    let dbNota2 = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
+    dbNota2 = dbNota2.filter((n) => !n.tanggal || !belum.includes(n.tanggal.substring(0, 7))); localStorage.setItem("DB_NOTA", JSON.stringify(dbNota2));
+    ["DB_BIAYA", "DB_ABSENSI", "DB_GAJI"].forEach((k) => {
+      let arr = JSON.parse(localStorage.getItem(k)) || []; arr = arr.filter((item) => { const tgl = item.tanggal || ""; return !belum.some((b) => tgl.startsWith(b)); }); localStorage.setItem(k, JSON.stringify(arr));
+    });
+    const newHistory = getBackupHistory(); belum.forEach((b) => { if (!newHistory.includes(b)) newHistory.push(b); }); saveBackupHistory(newHistory);
+    await refreshDataSistem(); renderBackupStatus(); toast(`Backup ${belum.length} bulan berhasil!`, "success");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 async function backupDanBersihkan() {
-  if (!await window.customConfirm("Backup & Bersihkan akan menghapus semua transaksi. Lanjutkan?")) return;
-  const allData = { metadata: { version: "v24" }, data: {} };
-  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
-  allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
-  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_full_${new Date().toISOString().slice(0, 10)}.json`; a.click();
-  // Hapus semua transaksi dari Supabase
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
   try {
-    await db.from("nota").delete().filter("id", "not.is", null);
-    await db.from("biaya").delete().filter("id", "not.is", null);
-    await db.from("absensi").delete().gte("tanggal", "1900-01-01");
-    await db.from("gaji").delete().filter("id", "not.is", null);
-    await db.from("payment_status").delete().filter("key", "not.is", null);
-    await db.from("locks").delete().filter("key", "not.is", null);
-    await db.from("backup_history").delete().filter("bulan", "not.is", null);
-  } catch (err) { console.error("Gagal menghapus dari Supabase:", err); toast("Gagal sinkronisasi hapus ke Supabase.", "error"); }
-  const keysToClear = ["DB_NOTA", "DB_BIAYA", "DB_ABSENSI", "DB_GAJI", "DB_PAYMENT_STATUS", "DB_LOCKS"];
-  keysToClear.forEach((k) => localStorage.setItem(k, JSON.stringify([])));
-  await refreshDataSistem(); renderBackupStatus(); toast("Backup berhasil & transaksi dibersihkan!", "success", 4000);
+    if (!await window.customConfirm("BACKUP SEMUA DATA LALU HAPUS SEMUA TRANSAKSI? Tindakan ini tidak bisa dibatalkan. Data master (pelanggan, linen, karyawan, pengaturan) TETAP AMAN.")) return;
+    const allData = { metadata: { version: "v24" }, data: {} };
+    const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", "DB_PAYMENT_STATUS", "DB_KARYAWAN", "DB_ABSENSI", "DB_GAJI", "DB_PENGATURAN", "DB_JENIS_NOTA", "DB_PELANGGAN", "DB_MASTER_LINEN", "DB_HARGA_PELANGGAN", "DB_KOP", "DB_UTANG", "DB_LINEN_PELANGGAN"];
+    allKeys.forEach((k) => (allData.data[k] = JSON.parse(localStorage.getItem(k))));
+    const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_full_${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    // Hapus semua transaksi dari Supabase
+    try {
+      await db.from("nota").delete().filter("id", "not.is", null);
+      await db.from("biaya").delete().filter("id", "not.is", null);
+      await db.from("absensi").delete().gte("tanggal", "1900-01-01");
+      await db.from("gaji").delete().filter("id", "not.is", null);
+      await db.from("payment_status").delete().filter("key", "not.is", null);
+      await db.from("locks").delete().filter("key", "not.is", null);
+      await db.from("backup_history").delete().filter("bulan", "not.is", null);
+    } catch (err) { console.error("Gagal menghapus dari Supabase:", err); toast("Gagal sinkronisasi hapus ke Supabase.", "error"); }
+    const keysToClear = ["DB_NOTA", "DB_BIAYA", "DB_ABSENSI", "DB_GAJI", "DB_PAYMENT_STATUS", "DB_LOCKS"];
+    keysToClear.forEach((k) => localStorage.setItem(k, JSON.stringify([])));
+    await refreshDataSistem(); renderBackupStatus(); toast("Backup berhasil & transaksi dibersihkan!", "success", 4000);
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 async function exportAllData() {
-  const tables = ["pelanggan", "jenis_nota", "master_linen", "karyawan", "absensi", "pengaturan", "kop", "harga_pelanggan", "nota", "biaya", "invoice_numbers", "invoice_counter", "payment_status", "locks", "utang", "gaji", "backup_history", "linen_pelanggan"];
-  const allData = {};
-  for (const table of tables) { const { data } = await db.from(table).select("*"); allData[table] = data; }
-  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); toast("Data berhasil diexport.", "success");
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const tables = ["pelanggan", "jenis_nota", "master_linen", "karyawan", "absensi", "pengaturan", "kop", "harga_pelanggan", "nota", "biaya", "invoice_numbers", "invoice_counter", "payment_status", "locks", "utang", "gaji", "backup_history", "linen_pelanggan"];
+    const allData = {};
+    for (const table of tables) { const { data } = await db.from(table).select("*"); allData[table] = data; }
+    const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `pelangi_backup_${new Date().toISOString().slice(0, 10)}.json`; a.click(); toast("Data berhasil diexport.", "success");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 function importDataViaFile() { document.getElementById("fileImportInput").click(); }
@@ -2214,13 +2323,19 @@ function getUtangList() { return JSON.parse(localStorage.getItem("DB_UTANG")) ||
 function saveUtangList(list) { localStorage.setItem("DB_UTANG", JSON.stringify(list)); }
 
 async function simpanUtang() {
-  const nama = document.getElementById("utangNama").value.trim(); const dari = document.getElementById("utangDari").value; const sampai = document.getElementById("utangSampai").value; const cicilan = parseCurrencyValue(document.getElementById("utangCicilan").value); const keterangan = document.getElementById("utangKeterangan").value.trim();
-  if (!nama || !dari || !sampai || cicilan <= 0) { toast("Lengkapi semua data dengan benar!", "warning"); return; }
-  if (sampai < dari) { toast("Bulan selesai tidak boleh lebih kecil dari bulan mulai!", "warning"); return; }
-  const [thn1, bln1] = dari.split("-").map(Number); const [thn2, bln2] = sampai.split("-").map(Number); const totalBulan = (thn2 - thn1) * 12 + (bln2 - bln1) + 1;
-  const { error } = await db.from("utang").insert([{ nama, dari, sampai, cicilan, keterangan, sisa_bulan: totalBulan, status: "AKTIF" }]);
-  if (error) { console.error("Gagal menyimpan utang:", error); toast("Gagal menyimpan utang.", "error"); return; }
-  await refreshDataSistem(); toast("Utang berhasil dicatat!"); document.getElementById("utangNama").value = ""; document.getElementById("utangCicilan").value = ""; document.getElementById("utangKeterangan").value = "";
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const nama = document.getElementById("utangNama").value.trim(); const dari = document.getElementById("utangDari").value; const sampai = document.getElementById("utangSampai").value; const cicilan = parseCurrencyValue(document.getElementById("utangCicilan").value); const keterangan = document.getElementById("utangKeterangan").value.trim();
+    if (!nama || !dari || !sampai || cicilan <= 0) { toast("Lengkapi semua data dengan benar!", "warning"); return; }
+    if (sampai < dari) { toast("Bulan selesai tidak boleh lebih kecil dari bulan mulai!", "warning"); return; }
+    const [thn1, bln1] = dari.split("-").map(Number); const [thn2, bln2] = sampai.split("-").map(Number); const totalBulan = (thn2 - thn1) * 12 + (bln2 - bln1) + 1;
+    const { error } = await db.from("utang").insert([{ nama, dari, sampai, cicilan, keterangan, sisa_bulan: totalBulan, status: "AKTIF" }]);
+    if (error) { console.error("Gagal menyimpan utang:", error); toast("Gagal menyimpan utang.", "error"); return; }
+    await refreshDataSistem(); toast("Utang berhasil dicatat!"); document.getElementById("utangNama").value = ""; document.getElementById("utangCicilan").value = ""; document.getElementById("utangKeterangan").value = "";
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 function renderDaftarUtang() {
@@ -2235,15 +2350,21 @@ function renderDaftarUtang() {
 }
 
 async function bayarCicilan(id) {
-  const { data: utangList } = await db.from("utang").select("*").eq("id", id);
-  if (!utangList || utangList.length === 0) return; const utang = utangList[0]; if (utang.status === "LUNAS") return;
-  if (!await window.customConfirm(`Bayar cicilan untuk "${utang.nama}" sebesar ${fmtRp(utang.cicilan)}?`)) return;
-  const { error: biayaError } = await db.from("biaya").insert([{ tanggal: new Date().toISOString().split("T")[0], kategori: "CICILAN UTANG", nominal: utang.cicilan, lunas: true, keterangan: `Cicilan: ${utang.nama}` }]);
-  if (biayaError) { console.error("Gagal mencatat biaya cicilan:", biayaError); toast("Gagal mencatat biaya cicilan.", "error"); return; }
-  const sisaBaru = utang.sisa_bulan - 1; const statusBaru = sisaBaru <= 0 ? "LUNAS" : "AKTIF";
-  const { error: updateError } = await db.from("utang").update({ sisa_bulan: Math.max(0, sisaBaru), status: statusBaru }).eq("id", id);
-  if (updateError) { console.error("Gagal mengupdate utang:", updateError); toast("Gagal mengupdate utang.", "error"); return; }
-  await refreshDataSistem(); await hitungMenejemenKeuangan(); toast("Cicilan dibayar & tercatat di pengeluaran.", "success");
+  const btn = event?.target?.closest('button');
+  setBtnLoading(btn, true);
+  try {
+    const { data: utangList } = await db.from("utang").select("*").eq("id", id);
+    if (!utangList || utangList.length === 0) return; const utang = utangList[0]; if (utang.status === "LUNAS") return;
+    if (!await window.customConfirm(`Bayar cicilan untuk "${utang.nama}" sebesar ${fmtRp(utang.cicilan)}?`)) return;
+    const { error: biayaError } = await db.from("biaya").insert([{ tanggal: new Date().toISOString().split("T")[0], kategori: "CICILAN UTANG", nominal: utang.cicilan, lunas: true, keterangan: `Cicilan: ${utang.nama}` }]);
+    if (biayaError) { console.error("Gagal mencatat biaya cicilan:", biayaError); toast("Gagal mencatat biaya cicilan.", "error"); return; }
+    const sisaBaru = utang.sisa_bulan - 1; const statusBaru = sisaBaru <= 0 ? "LUNAS" : "AKTIF";
+    const { error: updateError } = await db.from("utang").update({ sisa_bulan: Math.max(0, sisaBaru), status: statusBaru }).eq("id", id);
+    if (updateError) { console.error("Gagal mengupdate utang:", updateError); toast("Gagal mengupdate utang.", "error"); return; }
+    await refreshDataSistem(); await hitungMenejemenKeuangan(); toast("Cicilan dibayar & tercatat di pengeluaran.", "success");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 function hitungTotalUtang() {
