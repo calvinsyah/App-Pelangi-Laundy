@@ -317,7 +317,7 @@ async function refreshDataSistem() {
     const [{ data: jn }, { data: pl }, { data: ml }, { data: kr }, { data: ab }, { data: pg }, { data: kp }, { data: hp }, { data: invNum }, { data: invCnt }, { data: payStat }, { data: lk }, { data: ut }, { data: bh }, { data: lpRes }] = await Promise.all([
       db.from("jenis_nota").select("*"), db.from("pelanggan").select("*"), db.from("master_linen").select("*"), db.from("karyawan").select("*"), db.from("absensi").select("*"), db.from("pengaturan").select("*").limit(1), db.from("kop").select("*").limit(1), db.from("harga_pelanggan").select("*"), db.from("invoice_numbers").select("*"), db.from("invoice_counter").select("*"), db.from("payment_status").select("*"), db.from("locks").select("*"), db.from("utang").select("*"), db.from("backup_history").select("*"), db.from("linen_pelanggan").select("*").then(r => r.error ? { data: [] } : r).catch(() => ({ data: [] }))
     ]);
-    jenisNotaList = jn.map((j) => ({ name: j.name, multiplier: j.multiplier, forFlat: j.for_flat, forReguler: j.for_reguler }));
+    jenisNotaList = jn.map((j) => ({ name: j.name, multiplier: j.multiplier, forFlat: j.for_flat, forReguler: j.for_reguler, linen_config: j.linen_config || [] }));
     pelangganList = pl.map((p) => ({ id: p.id, name: p.nama, kode: p.kode, type: p.tipe, billingSystem: p.billing_system, flatRate: p.flat_rate, tarifRS: p.tarif_rs, alamat: p.alamat, kota: p.kota }));
     masterLinen = ml.map((m) => ({ id: m.id, name: m.name }));
     karyawanList = kr.map((k) => ({ id: k.id, nama: k.nama, bagian: k.bagian, persentase: k.persentase }));
@@ -385,7 +385,23 @@ function renderFormLinenInput() {
   const tbody = document.getElementById("tabelLinenInput"); tbody.innerHTML = "";
   if (!pelId) { tbody.innerHTML = '<tr><td colspan="4">Pilih pelanggan terlebih dahulu.</td></tr>'; return; }
   // Gunakan linen per-pelanggan (sorted by urutan), fallback ke masterLinen
-  const linenList = getLinenPelanggan(pelId);
+  let linenList = getLinenPelanggan(pelId);
+  
+  // BARU: Filter & urutkan by jenis_nota.linen_config
+  if (jData && jData.linen_config && jData.linen_config.length > 0) {
+    const config = jData.linen_config;
+    const allowed = new Set(config.map(c => c.id));
+    const orderMap = Object.fromEntries(config.map(c => [c.id, c.urutan]));
+    linenList = linenList
+      .filter(entry => allowed.has(entry.linenId))
+      .sort((a, b) => (orderMap[a.linenId] ?? 999) - (orderMap[b.linenId] ?? 999));
+  }
+  
+  if (linenList.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:24px;">Belum ada linen yang diatur untuk jenis nota ini.</td></tr>';
+    return;
+  }
+  
   linenList.forEach((entry, idx) => {
     const item = masterLinen.find((m) => m.id === entry.linenId);
     if (!item) return;
@@ -1651,6 +1667,93 @@ async function deleteMasterJenisNota(idx) {
 
 function bukaModalMasterLinen() { renderMasterLinenTable(); document.getElementById("modalMasterLinen").style.display = "flex"; }
 function bukaModalMasterJenisNota() { renderMasterJenisNotaTable(); document.getElementById("modalMasterJenisNota").style.display = "flex"; }
+
+// ===== ATUR LINEN PER JENIS NOTA =====
+function bukaModalAturLinenJenisNota() {
+  renderAturLinenJenisNotaDropdown();
+  loadLinenConfigForJenisNota();
+  document.getElementById("modalAturLinenJenisNota").style.display = "flex";
+}
+
+function renderAturLinenJenisNotaDropdown() {
+  const sel = document.getElementById("aturLinenJenisSelect");
+  if (!sel) return;
+  sel.innerHTML = jenisNotaList.map(j => `<option value="${j.name}">${j.name}</option>`).join("");
+}
+
+function loadLinenConfigForJenisNota() {
+  const jenisName = document.getElementById("aturLinenJenisSelect").value;
+  const jenis = jenisNotaList.find(j => j.name === jenisName);
+  const config = jenis?.linen_config || [];
+  const selectedIds = new Set(config.map(c => c.id));
+  const orderMap = Object.fromEntries(config.map(c => [c.id, c.urutan]));
+  
+  const sortedLinen = [...masterLinen].sort((a, b) => {
+    const oa = orderMap[a.id] ?? 999;
+    const ob = orderMap[b.id] ?? 999;
+    if (oa !== ob) return oa - ob;
+    return a.name.localeCompare(b.name);
+  });
+  
+  const html = sortedLinen.map((m, idx) => `
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background 0.15s;"
+         onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+      <input type="checkbox" value="${m.id}" ${selectedIds.has(m.id) ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;" onchange="updateLinenConfigOrder()">
+      <span>${m.name}</span>
+      ${selectedIds.has(m.id) ? `<span class="urutan-badge" style="font-size:12px;background:#10b981;color:#fff;padding:2px 8px;border-radius:12px;">${orderMap[m.id] !== undefined ? orderMap[m.id] + 1 : idx + 1}</span>` : ''}
+    </label>
+  `).join("");
+  document.getElementById("aturLinenCheckboxes").innerHTML = html || '<p style="color:var(--text-light);text-align:center;">Tidak ada master linen.</p>';
+}
+
+function updateLinenConfigOrder() {
+  const items = document.querySelectorAll("#aturLinenCheckboxes label");
+  let urutan = 0;
+  items.forEach(item => {
+    const cb = item.querySelector('input[type="checkbox"]');
+    const badge = item.querySelector('.urutan-badge');
+    if (cb.checked) {
+      if (!badge) {
+        const span = document.createElement('span');
+        span.className = 'urutan-badge';
+        span.style.cssText = 'font-size:12px;background:#10b981;color:#fff;padding:2px 8px;border-radius:12px;';
+        item.appendChild(span);
+      }
+      item.querySelector('.urutan-badge').textContent = ++urutan;
+      item.style.background = '#f0fdf4';
+    } else {
+      if (badge) badge.remove();
+      item.style.background = 'transparent';
+    }
+  });
+}
+
+async function simpanLinenConfigJenisNota() {
+  const btn = document.getElementById('btnSimpanLinenConfig');
+  setBtnLoading(btn, true);
+  try {
+    const jenisName = document.getElementById("aturLinenJenisSelect").value;
+    const labels = document.querySelectorAll("#aturLinenCheckboxes label");
+    const linenConfig = [];
+    let urutan = 0;
+    labels.forEach(label => {
+      const cb = label.querySelector('input[type="checkbox"]');
+      if (cb.checked) {
+        linenConfig.push({ id: parseInt(cb.value), urutan: urutan++ });
+      }
+    });
+    
+    const { error } = await db.from("jenis_nota").update({ linen_config: linenConfig }).eq("name", jenisName);
+    if (error) { console.error("Gagal menyimpan konfigurasi linen:", error); toast("Gagal menyimpan. Silakan coba lagi.", "error"); return; }
+    
+    const j = jenisNotaList.find(x => x.name === jenisName);
+    if (j) j.linen_config = linenConfig;
+    localStorage.setItem("DB_JENIS_NOTA", JSON.stringify(jenisNotaList));
+    
+    toast("Linen per jenis nota disimpan.", "success");
+    tutupModal('modalAturLinenJenisNota');
+  } finally { setBtnLoading(btn, false); }
+}
 
 function renderDaftarPelanggan() {
   const container = document.getElementById("daftarPelangganContainer");

@@ -492,6 +492,9 @@
             <button class="btn-sm btn-secondary" onclick="bukaModalMasterJenisNota()">
               ⚡ Jenis Nota
             </button>
+            <button class="btn-sm btn-info" onclick="bukaModalAturLinenJenisNota()">
+              📋 Atur Linen
+            </button>
           </div>
         </div>
         <div class="card">
@@ -995,6 +998,20 @@
         </thead>
         <tbody id="tabelMasterJenisNota"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Atur Linen per Jenis Nota -->
+  <div id="modalAturLinenJenisNota" class="modal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="tutupModal('modalAturLinenJenisNota')">×</button>
+      <h3>📋 Atur Linen per Jenis Nota</h3>
+      <div class="form-group">
+        <label>Jenis Nota</label>
+        <select id="aturLinenJenisSelect" onchange="loadLinenConfigForJenisNota()"></select>
+      </div>
+      <div id="aturLinenCheckboxes" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:12px;"></div>
+      <button id="btnSimpanLinenConfig" class="btn btn-success btn-block" onclick="simpanLinenConfigJenisNota()">💾 Simpan</button>
     </div>
   </div>
 
