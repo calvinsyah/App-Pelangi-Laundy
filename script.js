@@ -317,7 +317,7 @@ async function refreshDataSistem() {
     const [{ data: jn }, { data: pl }, { data: ml }, { data: kr }, { data: ab }, { data: pg }, { data: kp }, { data: hp }, { data: invNum }, { data: invCnt }, { data: payStat }, { data: lk }, { data: ut }, { data: bh }, { data: lpRes }] = await Promise.all([
       db.from("jenis_nota").select("*"), db.from("pelanggan").select("*"), db.from("master_linen").select("*"), db.from("karyawan").select("*"), db.from("absensi").select("*"), db.from("pengaturan").select("*").limit(1), db.from("kop").select("*").limit(1), db.from("harga_pelanggan").select("*"), db.from("invoice_numbers").select("*"), db.from("invoice_counter").select("*"), db.from("payment_status").select("*"), db.from("locks").select("*"), db.from("utang").select("*"), db.from("backup_history").select("*"), db.from("linen_pelanggan").select("*").then(r => r.error ? { data: [] } : r).catch(() => ({ data: [] }))
     ]);
-    jenisNotaList = jn.map((j) => ({ name: j.name, multiplier: j.multiplier, forFlat: j.for_flat, forReguler: j.for_reguler, linen_config: j.linen_config || [] }));
+    jenisNotaList = jn.map((j) => ({ name: j.name, multiplier: j.multiplier, forFlat: j.for_flat, forReguler: j.for_reguler, linenIds: Array.isArray(j.linen_ids) ? j.linen_ids.map(Number) : [] }));
     pelangganList = pl.map((p) => ({ id: p.id, name: p.nama, kode: p.kode, type: p.tipe, billingSystem: p.billing_system, flatRate: p.flat_rate, tarifRS: p.tarif_rs, alamat: p.alamat, kota: p.kota }));
     masterLinen = ml.map((m) => ({ id: m.id, name: m.name }));
     karyawanList = kr.map((k) => ({ id: k.id, nama: k.nama, bagian: k.bagian, persentase: k.persentase }));
@@ -380,28 +380,46 @@ function getHargaPerPelanggan(pelangganId, linenId, multiplier) {
   if (hrg && hrg[linenId] !== undefined && hrg[linenId] !== null) { return Math.floor(hrg[linenId] * multiplier); } return 0;
 }
 function renderFormLinenInput() {
-  const jName = document.getElementById("jenisNota").value; const jData = jenisNotaList.find((j) => j.name === jName); const mult = jData ? jData.multiplier : 1;
-  const pelName = document.getElementById("pelangganSelect").value; const pelData = pelangganList.find((p) => p.name === pelName); const pelId = pelData ? pelData.id : null;
-  const tbody = document.getElementById("tabelLinenInput"); tbody.innerHTML = "";
-  if (!pelId) { tbody.innerHTML = '<tr><td colspan="4">Pilih pelanggan terlebih dahulu.</td></tr>'; return; }
-  // Gunakan linen per-pelanggan (sorted by urutan), fallback ke masterLinen
-  let linenList = getLinenPelanggan(pelId);
-  
-  // BARU: Filter & urutkan by jenis_nota.linen_config
-  if (jData && jData.linen_config && jData.linen_config.length > 0) {
-    const config = jData.linen_config;
-    const allowed = new Set(config.map(c => c.id));
-    const orderMap = Object.fromEntries(config.map(c => [c.id, c.urutan]));
-    linenList = linenList
-      .filter(entry => allowed.has(entry.linenId))
-      .sort((a, b) => (orderMap[a.linenId] ?? 999) - (orderMap[b.linenId] ?? 999));
-  }
-  
-  if (linenList.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:24px;">Belum ada linen yang diatur untuk jenis nota ini.</td></tr>';
+  const jName = document.getElementById("jenisNota").value;
+  const jData = jenisNotaList.find((j) => j.name === jName);
+  const mult = jData ? jData.multiplier : 1;
+  const pelName = document.getElementById("pelangganSelect").value;
+  const pelData = pelangganList.find((p) => p.name === pelName);
+  const pelId = pelData ? pelData.id : null;
+  const tbody = document.getElementById("tabelLinenInput");
+  tbody.innerHTML = "";
+
+  if (!pelId) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-light);padding:20px;">Pilih pelanggan terlebih dahulu.</td></tr>';
     return;
   }
-  
+
+  // === Filter linen berdasarkan jenis nota (linen_ids) ===
+  // Jika jenis nota belum diatur (linen_ids kosong), tidak ada linen yang muncul.
+  const linenIdsJenis = (jData && Array.isArray(jData.linenIds)) ? jData.linenIds : [];
+
+  if (linenIdsJenis.length === 0) {
+    const isAdmin = currentUserRole === "admin";
+    const pesan = isAdmin
+      ? `⚠️ Belum ada linen diatur untuk jenis nota "<strong>${jName || '-'}</strong>". Klik tombol <strong>📋 Atur Linen</strong> di menu Master Data untuk mengaturnya.`
+      : `⚠️ Belum ada linen diatur untuk jenis nota "<strong>${jName || '-'}</strong>". Hubungi Admin untuk mengaturnya.`;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#b45309;background:#fffbeb;padding:24px;border:2px dashed #fde68a;">${pesan}</td></tr>`;
+    return;
+  }
+
+  // === Irisan: linen per-pelanggan (sorted) ∩ linen_ids jenis nota ===
+  // Pelanggan mengatur urutan & subset linen mereka sendiri,
+  // jenis nota memfilter subset mana yang aktif untuk jenis transaksi ini.
+  const linenList = getLinenPelanggan(pelId).filter((entry) => linenIdsJenis.includes(entry.linenId));
+
+  if (linenList.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#b45309;background:#fffbeb;padding:20px;border:1px dashed #fde68a;">
+      ℹ️ Tidak ada linen yang cocok antara pengaturan pelanggan & jenis nota "<strong>${jName}</strong>".<br>
+      <small>Pelanggan hanya punya linen di luar daftar jenis nota, atau jenis nota tidak mengizinkan linen pelanggan.</small>
+    </td></tr>`;
+    return;
+  }
+
   linenList.forEach((entry, idx) => {
     const item = masterLinen.find((m) => m.id === entry.linenId);
     if (!item) return;
@@ -467,16 +485,28 @@ async function cariNotaSistem() {
     hasil = hasil.filter((n) => { const nama = mapNama[n.pelanggan_id] || ""; return nama.toLowerCase().includes(pelFilter); });
   }
   const tbody = document.getElementById("tabelRiwayatNota");
-  if (hasil.length === 0) { tbody.innerHTML = '<tr><td colspan="6">Tidak ada transaksi.</td></tr>'; return; }
+  if (hasil.length === 0) {
+    const hint = (tgl || pelFilter) ? `Tidak ada transaksi cocok dengan filter saat ini. <button class="btn-link" onclick="clearCariPelanggan();document.getElementById('cariTanggal').value='';cariNotaSistem()">Tampilkan semua</button>` : `Belum ada transaksi tersimpan. Buat nota baru di tab "Input Nota".`;
+    tbody.innerHTML = emptyRowHTML(6, hint, "info");
+    return;
+  }
   const mapNama = {}; pelangganList.forEach((p) => { mapNama[p.id] = p.name; });
   tbody.innerHTML = hasil.map((nota) => {
     const namaPel = mapNama[nota.pelanggan_id] || "?";
     let aksi = `<button class="btn-sm btn-primary" onclick="bukaModalDetail(${nota.id})">Detail</button> <button class="btn-sm btn-primary" onclick="bukaModalEditLinen(${nota.id})">Edit</button>`;
     if (currentUserRole === "admin") aksi += ` <button class="btn-sm btn-danger" onclick="hapusNotaDariInvoice(${nota.id},'rekap')">Hapus</button>`;
-    return `<tr><td><strong>${nota.nota_id}</strong></td><td>${nota.tanggal}</td><td>${namaPel}</td><td>${nota.jenis}</td><td><strong>${fmtRp(nota.total)}</strong></td><td>${aksi}</td></tr>`;
+    return `<tr>
+      <td data-label="No Nota"><strong>${nota.nota_id}</strong></td>
+      <td data-label="Tanggal">${nota.tanggal}</td>
+      <td data-label="Pelanggan">${namaPel}</td>
+      <td data-label="Jenis">${nota.jenis}</td>
+      <td data-label="Total"><strong>${fmtRp(nota.total)}</strong></td>
+      <td data-label="Aksi" data-full-width style="white-space:nowrap;">${aksi}</td>
+    </tr>`;
   }).join("");
 }
-async function tampilkanSemuaNota() { document.getElementById("cariTanggal").value = ""; document.getElementById("cariPelanggan").value = ""; await cariNotaSistem(); }
+// tampilkanSemuaNota() tetap dipertahankan untuk backward-compat (dipakai internal oleh kode lain)
+async function tampilkanSemuaNota() { document.getElementById("cariTanggal").value = ""; document.getElementById("cariPelanggan").value = ""; updateCariPelangganClearBtn(); await cariNotaSistem(); }
 
 function getLockKey(pel, bln) { return `${pel}_${bln}`; }
 function isInvoiceLocked(pel, bln) { const locks = JSON.parse(localStorage.getItem("DB_LOCKS") || "{}"); return locks[getLockKey(pel, bln)] === true; }
@@ -1332,12 +1362,20 @@ async function hitungMenejemenKeuangan() {
     const tbody = document.getElementById("tabelRiwayatPengeluaran");
     if (!tbody) return;
     if (biayaFiltered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5">Tidak ada data</td></tr>';
+      const hasFilter = document.getElementById("filterExpMulai")?.value || document.getElementById("filterExpSelesai")?.value || document.getElementById("filterExpKat")?.value;
+      const hint = hasFilter ? "Tidak ada pengeluaran cocok dengan filter. <button class=\"btn-link\" onclick=\"resetFilterExp()\">Reset filter</button>" : "Belum ada pengeluaran tercatat. Catat pengeluaran baru di atas.";
+      tbody.innerHTML = emptyRowHTML(5, hint, "info");
     } else {
       tbody.innerHTML = biayaFiltered.map((b) => {
         const status = b.lunas ? '<span class="badge-status status-paid">LUNAS</span>' : '<span class="badge-status status-unpaid">BELUM LUNAS</span>';
         const btnLunas = b.lunas ? "" : `<button class="btn-sm btn-success" onclick="tandaiLunasBiaya(${b.id})">Tandai Lunas</button>`;
-        return `<tr><td>${b.tanggal}</td><td>${b.kategori}</td><td>${fmtRp(b.nominal)}</td><td>${status}</td><td><button class="btn-sm btn-primary" onclick="bukaEditBiaya(${b.id})">Edit</button> <button class="btn-sm btn-danger" onclick="hapusBiaya(${b.id})">Hapus</button> ${btnLunas}</td></tr>`;
+        return `<tr>
+          <td data-label="Tanggal">${b.tanggal}</td>
+          <td data-label="Kategori">${b.kategori}</td>
+          <td data-label="Nominal">${fmtRp(b.nominal)}</td>
+          <td data-label="Status">${status}</td>
+          <td data-label="Aksi" data-full-width style="white-space:nowrap;"><button class="btn-sm btn-primary" onclick="bukaEditBiaya(${b.id})">Edit</button> <button class="btn-sm btn-danger" onclick="hapusBiaya(${b.id})">Hapus</button> ${btnLunas}</td>
+        </tr>`;
       }).join("");
     }
   } catch (err) { console.error("Gagal menghitung keuangan:", err); toast("Gagal menghitung keuangan. Periksa koneksi.", "error"); }
@@ -1436,7 +1474,12 @@ async function simpanBiayaOperasional() {
   }
 }
 
-async function resetFilterExp() { await hitungMenejemenKeuangan(); }
+/* resetFilterExp() — kompatibilitas: reset semua field filter pengeluaran */
+async function resetFilterExp() {
+  ["filterExpMulai", "filterExpSelesai", "filterExpKat"].forEach((id) => { const el = document.getElementById(id); if (el) el.value = ""; });
+  updateFilterExpClearBtns();
+  await hitungMenejemenKeuangan();
+}
 function toggleCustomExpenseInput() { document.getElementById("groupCustomExpense").style.display = document.getElementById("expKategori").value === "LAIN-LAIN" ? "block" : "none"; }
 
 async function bukaEditBiaya(id) {
@@ -1500,16 +1543,12 @@ function onEditJenisChange() {
   if (!nota) return;
   const pData = pelangganList.find((p) => p.name === nota.pelanggan);
   if (pData && pData.type === "RS") return;
-  const jenisBaru = document.getElementById("editNotaJenisSelect").value;
-  const jData = jenisNotaList.find((j) => j.name === jenisBaru);
-  const mult = jData ? jData.multiplier : 1;
-  const container = document.getElementById("editLinenModalBody");
-  const labels = container.querySelectorAll(".price-label");
-  const inputs = container.querySelectorAll(".modal-edit-qty");
-  inputs.forEach((inp, idx) => {
-    const mid = parseInt(inp.getAttribute("data-masterid"));
-    if (pData) { const newPrice = getHargaPerPelanggan(pData.id, mid, mult); labels[idx].innerText = `@ ${fmtRp(newPrice)}`; }
-  });
+
+  // Re-render daftar linen (filter irisan + legacy highlight)
+  renderEditLinenList(nota, pData);
+
+  // Re-bind event listeners
+  document.querySelectorAll(".modal-edit-qty").forEach((inp) => { inp.addEventListener("input", hitungTotalEditPreview); });
   hitungTotalEditPreview();
 }
 
@@ -1594,12 +1633,14 @@ function tutupModalEdit() { document.getElementById("editLinenModal").style.disp
 
 function renderMasterLinenTable() {
   const tbody = document.getElementById("tabelMasterLinen"); if (!tbody) return;
-  tbody.innerHTML = masterLinen.map((m, i) => `<tr><td>${i + 1}</td><td><input type="text" id="linenName-${m.id}" value="${m.name}" style="width:100%;padding:6px;"></td><td style="text-align:center;"><button class="btn btn-primary btn-sm" onclick="updateLinen(${m.id})">Update</button> <button class="btn btn-danger btn-sm" onclick="hapusLinen(${m.id})">Hapus</button></td></tr>`).join("");
+  if (!masterLinen.length) { tbody.innerHTML = emptyRowHTML(3, "Belum ada master linen. Tambahkan linen baru di atas."); return; }
+  tbody.innerHTML = masterLinen.map((m, i) => `<tr><td>${i + 1}</td><td><input type="text" id="linenName-${m.id}" value="${m.name}" style="width:100%;padding:6px;"></td><td style="text-align:center;white-space:nowrap;"><button class="btn btn-primary btn-sm" onclick="updateLinen(${m.id})">Update</button> <button class="btn btn-danger btn-sm" onclick="hapusLinen(${m.id})">Hapus</button></td></tr>`).join("");
 }
 
 function renderMasterJenisNotaTable() {
   const tbody = document.getElementById("tabelMasterJenisNota"); if (!tbody) return;
-  tbody.innerHTML = jenisNotaList.map((j, idx) => `<tr><td><input type="text" id="jnName-${idx}" value="${j.name}" style="width:90px;padding:6px;"></td><td><select id="jnMult-${idx}" style="padding:6px;">${[1, 1.5, 2, 2.5, 3, 4].map((v) => `<option value="${v}" ${j.multiplier === v ? "selected" : ""}>${v}x</option>`).join("")}</select></td><td><select id="jnFor-${idx}" style="padding:6px;"><option value="both" ${j.forFlat && j.forReguler ? "selected" : ""}>Flat+Reg</option><option value="flat" ${j.forFlat && !j.forReguler ? "selected" : ""}>Flat</option><option value="reguler" ${!j.forFlat && j.forReguler ? "selected" : ""}>Reguler</option></select></td><td style="text-align:center;"><button class="btn btn-primary btn-sm" onclick="updateMasterJenisNota(${idx})">Update</button> <button class="btn btn-danger btn-sm" onclick="deleteMasterJenisNota(${idx})">Hapus</button></td></tr>`).join("");
+  if (!jenisNotaList.length) { tbody.innerHTML = emptyRowHTML(4, "Belum ada jenis nota. Tambahkan jenis nota baru di atas."); return; }
+  tbody.innerHTML = jenisNotaList.map((j, idx) => `<tr><td><input type="text" id="jnName-${idx}" value="${j.name}" style="width:90px;padding:6px;"></td><td><select id="jnMult-${idx}" style="padding:6px;">${[1, 1.5, 2, 2.5, 3, 4].map((v) => `<option value="${v}" ${j.multiplier === v ? "selected" : ""}>${v}x</option>`).join("")}</select></td><td><select id="jnFor-${idx}" style="padding:6px;"><option value="both" ${j.forFlat && j.forReguler ? "selected" : ""}>Flat+Reg</option><option value="flat" ${j.forFlat && !j.forReguler ? "selected" : ""}>Flat</option><option value="reguler" ${!j.forFlat && j.forReguler ? "selected" : ""}>Reguler</option></select></td><td style="text-align:center;white-space:nowrap;"><button class="btn btn-primary btn-sm" onclick="updateMasterJenisNota(${idx})">Update</button> <button class="btn btn-danger btn-sm" onclick="deleteMasterJenisNota(${idx})">Hapus</button></td></tr>`).join("");
 }
 
 async function tambahLinen() {
@@ -1668,108 +1709,166 @@ async function deleteMasterJenisNota(idx) {
 function bukaModalMasterLinen() { renderMasterLinenTable(); document.getElementById("modalMasterLinen").style.display = "flex"; }
 function bukaModalMasterJenisNota() { renderMasterJenisNotaTable(); document.getElementById("modalMasterJenisNota").style.display = "flex"; }
 
-// ===== ATUR LINEN PER JENIS NOTA =====
-function bukaModalAturLinenJenisNota() {
-  renderAturLinenJenisNotaDropdown();
-  loadLinenConfigForJenisNota();
+// ==================== MODAL: ATUR LINEN PER JENIS NOTA ====================
+function bukaModalAturLinen() {
+  // Hanya admin yang boleh akses
+  if (currentUserRole !== "admin") {
+    toast("Akses ditolak. Fitur ini khusus Admin.", "error");
+    return;
+  }
+  // Cek apakah ada master linen
+  if (!masterLinen || masterLinen.length === 0) {
+    toast("Belum ada master linen. Tambahkan linen terlebih dahulu.", "warning");
+    return;
+  }
+  // Cek apakah ada jenis nota
+  if (!jenisNotaList || jenisNotaList.length === 0) {
+    toast("Belum ada jenis nota. Tambahkan jenis nota terlebih dahulu.", "warning");
+    return;
+  }
+
+  // Populate dropdown jenis nota
+  const sel = document.getElementById("aturLinenJenisSelect");
+  sel.innerHTML = '<option value="">-- Pilih jenis nota --</option>' +
+    jenisNotaList.map((j) => `<option value="${j.name}">${j.name} (${j.multiplier}x)${j.linenIds && j.linenIds.length ? ' • ' + j.linenIds.length + ' linen' : ''}</option>`).join("");
+  sel.value = "";
+
+  // Tampilkan info
+  document.getElementById("aturLinenInfo").style.display = "block";
+
+  // Reset state checkbox list
+  document.getElementById("aturLinenCheckboxList").innerHTML = "";
+  document.getElementById("aturLinenEmptyState").style.display = "none";
+  document.getElementById("aturLinenCounter").innerText = "0 dari 0 linen dipilih";
+
+  // Buka modal
   document.getElementById("modalAturLinenJenisNota").style.display = "flex";
 }
 
-function renderAturLinenJenisNotaDropdown() {
-  const sel = document.getElementById("aturLinenJenisSelect");
-  if (!sel) return;
-  sel.innerHTML = jenisNotaList.map(j => `<option value="${j.name}">${j.name}</option>`).join("");
-}
-
-function loadLinenConfigForJenisNota() {
+function renderCheckboxLinen() {
   const jenisName = document.getElementById("aturLinenJenisSelect").value;
-  const jenis = jenisNotaList.find(j => j.name === jenisName);
-  const config = jenis?.linen_config || [];
-  const selectedIds = new Set(config.map(c => c.id));
-  const orderMap = Object.fromEntries(config.map(c => [c.id, c.urutan]));
-  
-  const sortedLinen = [...masterLinen].sort((a, b) => {
-    const oa = orderMap[a.id] ?? 999;
-    const ob = orderMap[b.id] ?? 999;
-    if (oa !== ob) return oa - ob;
-    return a.name.localeCompare(b.name);
-  });
-  
-  const html = sortedLinen.map((m, idx) => `
-    <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background 0.15s;"
-         onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
-      <input type="checkbox" value="${m.id}" ${selectedIds.has(m.id) ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer;" onchange="updateLinenConfigOrder()">
-      <span>${m.name}</span>
-      ${selectedIds.has(m.id) ? `<span class="urutan-badge" style="font-size:12px;background:#10b981;color:#fff;padding:2px 8px;border-radius:12px;">${orderMap[m.id] !== undefined ? orderMap[m.id] + 1 : idx + 1}</span>` : ''}
-    </label>
-  `).join("");
-  document.getElementById("aturLinenCheckboxes").innerHTML = html || '<p style="color:var(--text-light);text-align:center;">Tidak ada master linen.</p>';
+  const container = document.getElementById("aturLinenCheckboxList");
+  const emptyState = document.getElementById("aturLinenEmptyState");
+  const counter = document.getElementById("aturLinenCounter");
+
+  // Reset
+  container.innerHTML = "";
+
+  if (!jenisName) {
+    emptyState.style.display = "none";
+    counter.innerText = "0 dari 0 linen dipilih";
+    return;
+  }
+
+  if (!masterLinen || masterLinen.length === 0) {
+    emptyState.style.display = "block";
+    counter.innerText = "0 dari 0 linen dipilih";
+    return;
+  }
+
+  emptyState.style.display = "none";
+
+  // Ambil linenIds yang sudah disimpan untuk jenis nota terpilih
+  const jData = jenisNotaList.find((j) => j.name === jenisName);
+  const savedIds = (jData && Array.isArray(jData.linenIds)) ? jData.linenIds : [];
+
+  // Render semua master linen sebagai checkbox
+  container.innerHTML = masterLinen.map((m) => {
+    const isChecked = savedIds.includes(m.id);
+    return `
+      <label class="atur-linen-item${isChecked ? ' checked' : ''}">
+        <input type="checkbox" value="${m.id}" ${isChecked ? 'checked' : ''} onchange="updateAturLinenCounter(this)">
+        <span class="atur-linen-name">${m.name}</span>
+      </label>`;
+  }).join("");
+
+  updateAturLinenCounter();
 }
 
-function updateLinenConfigOrder() {
-  const items = document.querySelectorAll("#aturLinenCheckboxes label");
-  let urutan = 0;
-  items.forEach(item => {
-    const cb = item.querySelector('input[type="checkbox"]');
-    const badge = item.querySelector('.urutan-badge');
-    if (cb.checked) {
-      if (!badge) {
-        const span = document.createElement('span');
-        span.className = 'urutan-badge';
-        span.style.cssText = 'font-size:12px;background:#10b981;color:#fff;padding:2px 8px;border-radius:12px;';
-        item.appendChild(span);
-      }
-      item.querySelector('.urutan-badge').textContent = ++urutan;
-      item.style.background = '#f0fdf4';
-    } else {
-      if (badge) badge.remove();
-      item.style.background = 'transparent';
-    }
-  });
+function updateAturLinenCounter() {
+  const total = masterLinen.length;
+  const checked = document.querySelectorAll('#aturLinenCheckboxList input[type="checkbox"]:checked').length;
+  document.getElementById("aturLinenCounter").innerText = `${checked} dari ${total} linen dipilih`;
 }
 
-async function simpanLinenConfigJenisNota() {
-  const btn = document.getElementById('btnSimpanLinenConfig');
+async function simpanAturLinen() {
+  const btn = document.getElementById("btnSimpanAturLinen");
   setBtnLoading(btn, true);
   try {
     const jenisName = document.getElementById("aturLinenJenisSelect").value;
-    const labels = document.querySelectorAll("#aturLinenCheckboxes label");
-    const linenConfig = [];
-    let urutan = 0;
-    labels.forEach(label => {
-      const cb = label.querySelector('input[type="checkbox"]');
-      if (cb.checked) {
-        linenConfig.push({ id: parseInt(cb.value), urutan: urutan++ });
-      }
-    });
-    
-    const { error } = await db.from("jenis_nota").update({ linen_config: linenConfig }).eq("name", jenisName);
-    if (error) { console.error("Gagal menyimpan konfigurasi linen:", error); toast("Gagal menyimpan. Silakan coba lagi.", "error"); return; }
-    
-    const j = jenisNotaList.find(x => x.name === jenisName);
-    if (j) j.linen_config = linenConfig;
+    if (!jenisName) {
+      toast("Pilih jenis nota terlebih dahulu!", "warning");
+      return;
+    }
+
+    // Kumpulkan ID linen yang dicentang
+    const linenIds = Array.from(document.querySelectorAll('#aturLinenCheckboxList input[type="checkbox"]:checked'))
+      .map((inp) => parseInt(inp.value))
+      .filter((n) => !isNaN(n));
+
+    // Update ke Supabase
+    const { error } = await db.from("jenis_nota")
+      .update({ linen_ids: linenIds })
+      .eq("name", jenisName);
+
+    if (error) {
+      console.error("Gagal menyimpan atur linen:", error);
+      toast("Gagal menyimpan pengaturan linen.", "error");
+      return;
+    }
+
+    // Update state lokal
+    const jData = jenisNotaList.find((j) => j.name === jenisName);
+    if (jData) jData.linenIds = linenIds;
+
+    // Sync ke localStorage
     localStorage.setItem("DB_JENIS_NOTA", JSON.stringify(jenisNotaList));
-    
-    toast("Linen per jenis nota disimpan.", "success");
-    tutupModal('modalAturLinenJenisNota');
-  } finally { setBtnLoading(btn, false); }
+
+    // Tutup modal & re-render form input linen
+    tutupModal("modalAturLinenJenisNota");
+    renderFormLinenInput();
+
+    toast(`Pengaturan linen untuk "${jenisName}" disimpan! (${linenIds.length} linen)`, "success");
+  } finally {
+    setBtnLoading(btn, false);
+  }
 }
 
 function renderDaftarPelanggan() {
   const container = document.getElementById("daftarPelangganContainer");
-  if (!pelangganList.length) { container.innerHTML = '<p style="text-align:center;color:var(--text-light);">Belum ada pelanggan.</p>'; return; }
-  container.innerHTML = pelangganList.map((p) => `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;background:#fff;">
-        <div>
-            <strong style="font-size:16px;">${p.name}</strong>
-            ${p.kode ? `<span style="margin-left:10px;font-size:12px;font-weight:700;background:#1e3a5f;color:#fff;padding:2px 8px;border-radius:4px;">${p.kode}</span>` : ""}
-            <span style="margin-left:10px;font-size:13px;color:var(--text-light);">${p.type}</span>
-            <span style="margin-left:10px;font-size:13px;background:#eff6ff;padding:2px 8px;border-radius:4px;">${p.billingSystem}</span>
-            ${p.type === "HOTEL" && p.billingSystem === "FLAT" ? `<span style="margin-left:10px;font-size:13px;">Flat: ${fmtRp(p.flatRate)}</span>` : ""}
-            ${p.type === "RS" ? `<span style="margin-left:10px;font-size:13px;">Tarif: ${fmtRp(p.tarifRS)}/Kg</span>` : ""}
+  if (!pelangganList.length) {
+    container.innerHTML = `<div class="info-box"><span>ℹ️</span><span>Belum ada pelanggan. Tambahkan pelanggan baru di bawah.</span></div>`;
+    return;
+  }
+  // SMART SEARCH: filter by name / kode
+  const q = (document.getElementById("cariPelangganMaster")?.value || "").toLowerCase().trim();
+  let list = pelangganList;
+  if (q) {
+    list = pelangganList.filter((p) =>
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.kode || "").toLowerCase().includes(q)
+    );
+  }
+  if (list.length === 0) {
+    container.innerHTML = `<div class="info-box warning"><span>🔍</span><span>Tidak ada pelanggan cocok dengan "<strong>${q}</strong>". <button class="btn-link" onclick="clearCariPelangganMaster()">Tampilkan semua</button></span></div>`;
+    return;
+  }
+  container.innerHTML = list.map((p) => `<div class="pelanggan-card">
+        <div class="pelanggan-info">
+            <div class="pelanggan-name">
+                ${p.name}
+                ${p.kode ? `<span class="kode-chip">${p.kode}</span>` : ""}
+            </div>
+            <div class="pelanggan-meta">
+                <span>${p.type}</span>
+                <span class="billing-chip">${p.billingSystem}</span>
+                ${p.type === "HOTEL" && p.billingSystem === "FLAT" ? `<span>Flat: ${fmtRp(p.flatRate)}</span>` : ""}
+                ${p.type === "RS" ? `<span>Tarif: ${fmtRp(p.tarifRS)}/Kg</span>` : ""}
+            </div>
         </div>
-        <div style="display:flex;gap:6px;">
-            <button class="btn btn-primary btn-sm" onclick="bukaModalEditPelanggan(${p.id})">✏️ Edit & Harga</button>
-            <button class="btn btn-danger btn-sm" onclick="hapusPelanggan(${p.id})">🗑️</button>
+        <div class="pelanggan-actions">
+            <button class="btn-sm btn-primary" onclick="bukaModalEditPelanggan(${p.id})">✏️ Edit & Harga</button>
+            <button class="btn-sm btn-danger" onclick="hapusPelanggan(${p.id})" title="Hapus" aria-label="Hapus pelanggan ${p.name}">🗑️</button>
         </div>
     </div>`).join("");
 }
@@ -1830,35 +1929,99 @@ async function bukaModalEditLinen(id) {
     filtered.forEach((j) => { editSelect.innerHTML += `<option value="${j.name}" ${j.name === nota.jenis ? "selected" : ""}>${j.name} (${j.multiplier}x)</option>`; });
   }
 
+  // Update localStorage cache dengan nota terbaru dari DB supaya onEditJenisChange dapat data segar
+  try {
+    const cacheNota = JSON.parse(localStorage.getItem("DB_NOTA") || "[]");
+    const normalized = normalizeNota(nota);
+    const idx = cacheNota.findIndex((n) => n.id === nota.id);
+    if (idx >= 0) cacheNota[idx] = normalized; else cacheNota.push(normalized);
+    localStorage.setItem("DB_NOTA", JSON.stringify(cacheNota));
+  } catch (e) { console.warn("Gagal sync cache nota:", e); }
+
   const container = document.getElementById("editLinenModalBody"); container.innerHTML = "";
   if (pData.type === "RS") {
     const qtyRS = nota.items[0]?.qty || 0;
     container.innerHTML = `<div class="form-group"><label>Berat (KG)</label><input type="number" step="0.1" class="modal-edit-qty" value="${qtyRS}"></div>`;
   } else {
-    const jData = jenisNotaList.find((j) => j.name === (editSelect.value || nota.jenis));
-    const mult = jData ? jData.multiplier : 1;
-    if (!masterLinen || masterLinen.length === 0) { container.innerHTML = "<p>Master linen belum tersedia.</p>"; return; }
-    // Gunakan linen per-pelanggan (sorted by urutan)
-    const linenList = getLinenPelanggan(pData.id);
-    linenList.forEach((entry) => {
-      const m = masterLinen.find((ml) => ml.id === entry.linenId);
-      if (!m) return;
-      const exist = (nota.items || []).find((it) => it.idMaster === m.id);
-      const qty = exist ? exist.qty : 0;
-      const hargaSatuan = getHargaPerPelanggan(pData.id, m.id, mult);
-      container.innerHTML += `
-                <div class="form-group">
-                    <label>${m.name}</label>
-                    <input type="number" class="modal-edit-qty" data-masterid="${m.id}" value="${qty}" min="0">
-                    <span class="price-label">@ ${fmtRp(hargaSatuan)}</span>
-                </div>`;
-    });
+    // Render linen list pakai helper yang sama dengan onEditJenisChange (filter + legacy)
+    renderEditLinenList(nota, pData);
   }
 
   const jenisSelect = document.getElementById("editNotaJenisSelect");
   if (jenisSelect) { jenisSelect.addEventListener("change", () => { onEditJenisChange(); hitungTotalEditPreview(); }); }
   document.querySelectorAll(".modal-edit-qty").forEach((inp) => { inp.addEventListener("input", hitungTotalEditPreview); });
   hitungTotalEditPreview(); document.getElementById("editLinenModal").style.display = "flex";
+}
+
+/**
+ * Helper: Render daftar linen di modal Edit Nota.
+ * Menerapkan filter irisan (linen_pelanggan ∩ linen_ids jenis),
+ * dengan item lama yang tidak lagi valid tetap ditampilkan (highlight kuning, editable).
+ */
+function renderEditLinenList(nota, pData) {
+  const jenisName = document.getElementById("editNotaJenisSelect").value || nota.jenis;
+  const jData = jenisNotaList.find((j) => j.name === jenisName);
+  const mult = jData ? jData.multiplier : 1;
+  const container = document.getElementById("editLinenModalBody");
+  container.innerHTML = "";
+
+  if (!masterLinen || masterLinen.length === 0) {
+    container.innerHTML = "<p>Master linen belum tersedia.</p>";
+    return;
+  }
+
+  // 1. Daftar linen yang valid untuk jenis nota (urutan sesuai config per-pelanggan)
+  const linenIdsJenis = (jData && Array.isArray(jData.linenIds)) ? jData.linenIds : [];
+  const validLinenList = getLinenPelanggan(pData.id).filter((entry) => linenIdsJenis.includes(entry.linenId));
+  const validIds = new Set(validLinenList.map((e) => e.linenId));
+
+  // 2. Item lama dari nota yang TIDAK lagi valid (di-skip oleh filter) — tetap tampil dengan highlight kuning
+  const legacyItems = (nota.items || []).filter((it) => it.idMaster && !validIds.has(it.idMaster));
+
+  // 3. Header info jika ada item legacy
+  if (legacyItems.length > 0) {
+    container.innerHTML += `
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#92400e;">
+        ⚠️ <strong>${legacyItems.length} item lama</strong> tidak lagi termasuk dalam pengaturan jenis nota "${jenisName}".<br>
+        Item tetap ditampilkan (highlight kuning) & dapat diedit — set qty ke <strong>0</strong> untuk menghapus, atau biarkan tetap jika masih ingin disimpan.
+      </div>`;
+  }
+
+  // 4. Tampilkan legacy items TERLEBIH DAHULU (di atas, dengan highlight kuning)
+  legacyItems.forEach((it) => {
+    const m = masterLinen.find((ml) => ml.id === it.idMaster);
+    const nama = m ? m.name : it.name;
+    const hargaSatuan = getHargaPerPelanggan(pData.id, it.idMaster, mult);
+    container.innerHTML += `
+      <div class="form-group linen-edit-row legacy-item">
+        <label>${nama} <span style="color:#b45309;font-size:11px;font-weight:700;">⚠ ITEM LAMA</span></label>
+        <input type="number" class="modal-edit-qty" data-masterid="${it.idMaster}" value="${it.qty}" min="0">
+        <span class="price-label">@ ${fmtRp(hargaSatuan)}</span>
+      </div>`;
+  });
+
+  // 5. Tampilkan linen yang valid
+  if (validLinenList.length === 0 && legacyItems.length === 0) {
+    container.innerHTML += `
+      <div style="text-align:center;color:#b45309;background:#fffbeb;padding:20px;border:2px dashed #fde68a;border-radius:6px;font-size:13px;">
+        ⚠️ Tidak ada linen yang diatur untuk jenis nota "<strong>${jenisName}</strong>".<br>
+        <small>Atur linen via Master Data → 📋 Atur Linen terlebih dahulu.</small>
+      </div>`;
+  } else {
+    validLinenList.forEach((entry) => {
+      const m = masterLinen.find((ml) => ml.id === entry.linenId);
+      if (!m) return;
+      const exist = (nota.items || []).find((it) => it.idMaster === m.id);
+      const qty = exist ? exist.qty : 0;
+      const hargaSatuan = getHargaPerPelanggan(pData.id, m.id, mult);
+      container.innerHTML += `
+        <div class="form-group linen-edit-row">
+          <label>${m.name}</label>
+          <input type="number" class="modal-edit-qty" data-masterid="${m.id}" value="${qty}" min="0">
+          <span class="price-label">@ ${fmtRp(hargaSatuan)}</span>
+        </div>`;
+    });
+  }
 }
 
 async function simpanDetailPelanggan() {
@@ -1982,7 +2145,13 @@ function handleEditBillingChange() {
 
 function renderMasterKaryawanTable() {
   const tbody = document.getElementById("tabelMasterKaryawan");
-  tbody.innerHTML = karyawanList.map((k) => `<tr><td>${k.nama}</td><td>${k.bagian || "-"}</td><td>${k.persentase}%</td><td><button class="btn-sm btn-primary" onclick="openEditKaryawanModal(${k.id})">Edit</button> <button class="btn-sm btn-danger" onclick="hapusKaryawan(${k.id})">Hapus</button></td></tr>`).join("");
+  if (!karyawanList.length) { tbody.innerHTML = emptyRowHTML(4, "Belum ada karyawan. Tambahkan karyawan baru di atas."); return; }
+  tbody.innerHTML = karyawanList.map((k) => `<tr>
+    <td data-label="Nama">${k.nama}</td>
+    <td data-label="Bagian">${k.bagian || "-"}</td>
+    <td data-label="Persentase">${k.persentase}%</td>
+    <td data-label="Aksi" data-full-width style="white-space:nowrap;"><button class="btn-sm btn-primary" onclick="openEditKaryawanModal(${k.id})">Edit</button> <button class="btn-sm btn-danger" onclick="hapusKaryawan(${k.id})">Hapus</button></td>
+  </tr>`).join("");
 }
 
 async function tambahKaryawan() {
@@ -2443,12 +2612,37 @@ async function simpanUtang() {
 
 function renderDaftarUtang() {
   const utangList = getUtangList(); const tbody = document.getElementById("tabelDaftarUtang"); if (!tbody) return;
-  if (utangList.length === 0) { tbody.innerHTML = '<tr><td colspan="7">Belum ada utang tercatat.</td></tr>'; return; }
-  tbody.innerHTML = utangList.map((u) => {
+  if (utangList.length === 0) { tbody.innerHTML = emptyRowHTML(7, "Belum ada utang tercatat. Tambahkan utang baru di atas."); return; }
+  // SMART SEARCH: filter by nama / keterangan
+  const q = (document.getElementById("cariUtang")?.value || "").toLowerCase().trim();
+  let list = utangList;
+  if (q) {
+    list = utangList.filter((u) =>
+      (u.nama || "").toLowerCase().includes(q) ||
+      (u.keterangan || "").toLowerCase().includes(q)
+    );
+  }
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="padding:0;border:0;">
+      <div class="info-box warning" style="margin:0;border-radius:0;">
+        <span>🔍</span><span>Tidak ada utang cocok dengan "<strong>${q}</strong>". <button class="btn-link" onclick="clearCariUtang()">Tampilkan semua</button></span>
+      </div>
+    </td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map((u) => {
     const sisaTotal = u.sisaBulan * u.cicilan;
     const statusBadge = u.status === "LUNAS" ? '<span class="badge-status status-paid">LUNAS</span>' : '<span class="badge-status status-unpaid">AKTIF</span>';
     const bayarBtn = u.status === "AKTIF" ? `<button class="btn-sm btn-secondary" onclick="bayarCicilan(${u.id})">💸 Bayar Cicilan</button>` : "";
-    return `<tr><td><strong>${u.nama}</strong>${u.keterangan ? `<br><small>${u.keterangan}</small>` : ""}</td><td>${u.dari} s/d ${u.sampai}</td><td>${fmtRp(u.cicilan)}</td><td>${u.sisaBulan} bulan</td><td>${fmtRp(sisaTotal)}</td><td>${statusBadge}</td><td>${bayarBtn}</td></tr>`;
+    return `<tr>
+      <td data-label="Nama"><strong>${u.nama}</strong>${u.keterangan ? `<br><small>${u.keterangan}</small>` : ""}</td>
+      <td data-label="Periode">${u.dari} s/d ${u.sampai}</td>
+      <td data-label="Cicilan/Bulan">${fmtRp(u.cicilan)}</td>
+      <td data-label="Sisa Bulan">${u.sisaBulan} bulan</td>
+      <td data-label="Sisa Total">${fmtRp(sisaTotal)}</td>
+      <td data-label="Status">${statusBadge}</td>
+      <td data-label="Aksi" data-full-width>${bayarBtn}</td>
+    </tr>`;
   }).join("");
 }
 
@@ -2484,23 +2678,180 @@ const TAB_CATEGORIES = {
 };
 
 function switchCategory(cat) {
-  document.querySelectorAll(".cat-btn").forEach((b) => b.classList.toggle("active", b.dataset.cat === cat));
+  // FIX: update aria-selected + active state, render subtabs dengan aria
+  document.querySelectorAll(".cat-btn").forEach((b) => {
+    const isActive = b.dataset.cat === cat;
+    b.classList.toggle("active", isActive);
+    b.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
   const info = TAB_CATEGORIES[cat]; if (!info) return;
   const sub = document.getElementById("navSubtabs");
-  sub.innerHTML = `<span class="group-label">${info.label}:</span>` + info.tabs.map((t) => `<button class="tab-btn" onclick="switchTab('${t[0]}')">${t[1]}</button>`).join("");
+  sub.innerHTML = `<span class="group-label">${info.label}:</span>` + info.tabs.map((t) =>
+    `<button class="tab-btn" role="tab" aria-selected="false" aria-controls="${t[0]}" onclick="switchTab('${t[0]}')">${t[1]}</button>`
+  ).join("");
   switchTab(info.tabs[0][0]);
 }
 
 async function switchTab(tabId) {
   document.querySelectorAll(".tab-content").forEach((el) => (el.style.display = "none"));
   const activeTab = document.getElementById(tabId); if (activeTab) activeTab.style.display = "block";
-  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-  const tabBtn = document.querySelector(`[onclick="switchTab('${tabId}')"]`); if (tabBtn) tabBtn.classList.add("active");
-  if (tabId === "tab-rekap") await cariNotaSistem(); if (tabId === "tab-gaji") tampilkanListGajiBaru();
-  if (tabId === "tab-omset") await hitungMenejemenKeuangan(); if (tabId === "tab-utang") renderDaftarUtang();
-  if (tabId === "tab-absen") renderAbsensiTable(); if (tabId === "tab-backup") renderBackupStatus();
+  // FIX: update aria-selected + active state untuk semua tab-btn
+  document.querySelectorAll(".tab-btn").forEach((b) => {
+    const isActive = b.getAttribute("onclick") === `switchTab('${tabId}')`;
+    b.classList.toggle("active", isActive);
+    b.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+  if (tabId === "tab-rekap") { await cariNotaSistem(); updateCariPelangganClearBtn(); }
+  if (tabId === "tab-gaji") tampilkanListGajiBaru();
+  if (tabId === "tab-omset") { await hitungMenejemenKeuangan(); updateFilterExpClearBtns(); }
+  if (tabId === "tab-utang") { renderDaftarUtang(); updateCariUtangClearBtn(); }
+  if (tabId === "tab-absen") renderAbsensiTable();
+  if (tabId === "tab-backup") renderBackupStatus();
   if (tabId === "tab-laporan") { await tampilkanLaporan(); }
-  if (tabId === "tab-master") { renderDaftarPelanggan(); renderMasterLinenTable(); renderMasterJenisNotaTable(); }
+  if (tabId === "tab-master") {
+    renderDaftarPelanggan(); renderMasterLinenTable(); renderMasterJenisNotaTable();
+    updateCariPelangganMasterClearBtn();
+  }
+  setupFAB(tabId);
+}
+
+/* ============================================================
+   FAB Management — Primary CTA per tab (mobile thumb-reach only)
+   Pola: 1 primary action per tab, floating, accessible.
+   Tab tanpa primary action yang jelas → FAB di-hidden (jangan dipaksa).
+   ============================================================ */
+const FAB_CONFIG = {
+  "tab-nota":     { icon: "✓", label: "Simpan",            onclick: "simpanNotaSistem()",         variant: "success" },
+  "tab-rekap":    { icon: "🔍", label: "Cari",              onclick: "cariNotaSistem()",            variant: "primary" },
+  "tab-invoice":  { icon: "🖱️", label: "Hitung Invoice",    onclick: "hitungDanAmbilInvoice()",     variant: "primary" },
+  "tab-kuitansi": { icon: "🖨️", label: "Cetak Kuitansi",    onclick: "generateKuitansi()",          variant: "success" },
+  "tab-omset":    { icon: "💸", label: "Catat Pengeluaran", onclick: "focusInputPengeluaran()",     variant: "danger" },
+  "tab-utang":    { icon: "✓", label: "Simpan Utang",       onclick: "simpanUtang()",               variant: "success" },
+  "tab-master":   { icon: "👤", label: "Tambah Pelanggan",  onclick: "focusInputPelangganBaru()",   variant: "success" },
+  "tab-absen":    { icon: "💾", label: "Simpan Absensi",    onclick: "simpanAbsensi()",             variant: "success" },
+  "tab-backup":   { icon: "📤", label: "Export Semua",      onclick: "exportAllData()",             variant: "success" },
+  // tab-laporan & tab-gaji: tidak ada primary CTA tunggal yang cocok → FAB di-hidden (jangan dipaksa)
+};
+function setupFAB(tabId) {
+  const fab = document.getElementById("globalFab");
+  if (!fab) return;
+  const cfg = FAB_CONFIG[tabId];
+  if (!cfg) { fab.style.display = "none"; return; }
+  document.getElementById("fabIcon").textContent = cfg.icon;
+  document.getElementById("fabLabel").textContent = cfg.label;
+  fab.className = `fab no-print fab-${cfg.variant}`;
+  fab.onclick = () => { try { window.eval(cfg.onclick); } catch (e) { console.error("FAB onclick error:", e); } };
+  fab.style.display = "flex";
+}
+function focusInputPengeluaran() {
+  const el = document.getElementById("expNominal");
+  if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", block: "center" }); }
+}
+function focusInputPelangganBaru() {
+  const el = document.getElementById("newPelangganName");
+  if (el) { el.focus(); el.scrollIntoView({ behavior: "smooth", block: "center" }); }
+}
+
+/* ============================================================
+   SMART SEARCH PATTERN — ganti tombol "Semua" dengan inline clear (×)
+   Pola: input oninput → auto-filter; × → clear & re-render.
+   Logika bisnis cariNotaSistem() TIDAK berubah — tetap handle
+   "input kosong = tampilkan semua".
+   ============================================================ */
+
+/* --- Riwayat Nota: Pelanggan search + clear --- */
+function onCariPelangganInput() {
+  updateCariPelangganClearBtn();
+  cariNotaSistem();
+}
+function updateCariPelangganClearBtn() {
+  const input = document.getElementById("cariPelanggan");
+  const clearBtn = document.getElementById("cariPelangganClear");
+  if (!input || !clearBtn) return;
+  if (input.value.trim() !== "") clearBtn.classList.add("visible");
+  else clearBtn.classList.remove("visible");
+}
+function clearCariPelanggan() {
+  const input = document.getElementById("cariPelanggan");
+  if (input) input.value = "";
+  updateCariPelangganClearBtn();
+  cariNotaSistem();
+}
+
+/* --- Daftar Pelanggan: search + clear --- */
+function onCariPelangganMasterInput() {
+  updateCariPelangganMasterClearBtn();
+  renderDaftarPelanggan();
+}
+function updateCariPelangganMasterClearBtn() {
+  const input = document.getElementById("cariPelangganMaster");
+  const clearBtn = document.getElementById("cariPelangganMasterClear");
+  if (!input || !clearBtn) return;
+  if (input.value.trim() !== "") clearBtn.classList.add("visible");
+  else clearBtn.classList.remove("visible");
+}
+function clearCariPelangganMaster() {
+  const input = document.getElementById("cariPelangganMaster");
+  if (input) input.value = "";
+  updateCariPelangganMasterClearBtn();
+  renderDaftarPelanggan();
+}
+
+/* --- Daftar Utang: search + clear --- */
+function onCariUtangInput() {
+  updateCariUtangClearBtn();
+  renderDaftarUtang();
+}
+function updateCariUtangClearBtn() {
+  const input = document.getElementById("cariUtang");
+  const clearBtn = document.getElementById("cariUtangClear");
+  if (!input || !clearBtn) return;
+  if (input.value.trim() !== "") clearBtn.classList.add("visible");
+  else clearBtn.classList.remove("visible");
+}
+function clearCariUtang() {
+  const input = document.getElementById("cariUtang");
+  if (input) input.value = "";
+  updateCariUtangClearBtn();
+  renderDaftarUtang();
+}
+
+/* --- Riwayat Pengeluaran: auto-filter on change + inline clear per field --- */
+function onFilterExpInput() {
+  updateFilterExpClearBtns();
+  hitungMenejemenKeuangan();
+}
+function updateFilterExpClearBtns() {
+  const fields = [
+    { id: "filterExpMulai",   clearId: "filterExpMulaiClear" },
+    { id: "filterExpSelesai", clearId: "filterExpSelesaiClear" },
+    { id: "filterExpKat",     clearId: "filterExpKatClear" },
+  ];
+  fields.forEach((f) => {
+    const el = document.getElementById(f.id);
+    const btn = document.getElementById(f.clearId);
+    if (!el || !btn) return;
+    if (el.value && el.value.trim() !== "") btn.classList.add("visible");
+    else btn.classList.remove("visible");
+  });
+}
+function clearFilterExpField(field) {
+  if (field === "mulai")   document.getElementById("filterExpMulai").value = "";
+  if (field === "selesai") document.getElementById("filterExpSelesai").value = "";
+  if (field === "kat")     document.getElementById("filterExpKat").value = "";
+  updateFilterExpClearBtns();
+  hitungMenejemenKeuangan();
+}
+
+/* ============================================================
+   INFO-BOX EMPTY STATE — render pesan kosong yang lebih ramah
+   ============================================================ */
+function emptyRowHTML(colspan, message, variant = "info") {
+  return `<tr><td colspan="${colspan}" style="padding:0;border:0;">
+    <div class="info-box ${variant === "info" ? "" : variant}" style="margin:0;border-radius:0;">
+      <span>ℹ️</span><span>${message}</span>
+    </div>
+  </td></tr>`;
 }
 
 function tutupModal(id) { document.getElementById(id).style.display = "none"; }

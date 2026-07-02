@@ -4,7 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pelangi Laundry - v24 Final</title>
+  <title>Pelangi Laundry - v25 Enhanced Progressive</title>
+  <meta name="theme-color" content="#1e3a5f" />
   <!-- Menghubungkan file CSS eksternal -->
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -68,33 +69,33 @@
     </header>
 
     <div class="container">
-      <!-- Navigasi Kategori & Subtab -->
+      <!-- Navigasi Kategori & Subtab — FIX: structure dengan aria, sticky berurutan -->
       <div class="nav-tabs no-print" id="navigationTabs">
-        <!-- Kategori Utama -->
-        <div class="nav-categories" id="navCategories">
-          <button class="cat-btn active" data-cat="transaksi" onclick="switchCategory('transaksi')">
+        <!-- Kategori Utama (Level 1) -->
+        <nav class="nav-categories" id="navCategories" role="tablist" aria-label="Kategori utama">
+          <button class="cat-btn active" data-cat="transaksi" role="tab" aria-selected="true" aria-controls="navSubtabs" onclick="switchCategory('transaksi')">
             📊 Transaksi
           </button>
-          <button class="cat-btn admin-only" data-cat="tagihan" onclick="switchCategory('tagihan')">
+          <button class="cat-btn admin-only" data-cat="tagihan" role="tab" aria-selected="false" aria-controls="navSubtabs" onclick="switchCategory('tagihan')">
             🧾 Tagihan
           </button>
-          <button class="cat-btn admin-only" data-cat="keuangan" onclick="switchCategory('keuangan')">
+          <button class="cat-btn admin-only" data-cat="keuangan" role="tab" aria-selected="false" aria-controls="navSubtabs" onclick="switchCategory('keuangan')">
             💰 Keuangan
           </button>
-          <button class="cat-btn admin-only" data-cat="sistem" onclick="switchCategory('sistem')">
+          <button class="cat-btn admin-only" data-cat="sistem" role="tab" aria-selected="false" aria-controls="navSubtabs" onclick="switchCategory('sistem')">
             ⚙️ Sistem
           </button>
-        </div>
-        <!-- Subtab -->
-        <div class="nav-subtabs" id="navSubtabs">
+        </nav>
+        <!-- Subtab (Level 2) -->
+        <nav class="nav-subtabs" id="navSubtabs" role="tablist" aria-label="Sub-tab">
           <span class="group-label">TRANSAKSI:</span>
-          <button class="tab-btn active" onclick="switchTab('tab-nota')">
+          <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-nota" onclick="switchTab('tab-nota')">
             📝 Input Nota
           </button>
-          <button class="tab-btn" onclick="switchTab('tab-rekap')">
+          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-rekap" onclick="switchTab('tab-rekap')">
             🔍 Riwayat Nota
           </button>
-        </div>
+        </nav>
       </div>
 
       <!-- ==================== TAB: INPUT NOTA ==================== -->
@@ -115,17 +116,19 @@
           <!-- Form untuk Hotel -->
           <div id="formHotel">
             <label style="margin-bottom: 8px; font-weight: 700">Kuantitas Cucian Linen (Pcs)</label>
-            <table class="linen-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Nama Linen</th>
-                  <th>Harga Satuan</th>
-                  <th style="text-align: center">Jumlah</th>
-                </tr>
-              </thead>
-              <tbody id="tabelLinenInput"></tbody>
-            </table>
+            <div class="table-wrap">
+              <table class="linen-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Nama Linen</th>
+                    <th>Harga Satuan</th>
+                    <th style="text-align: center">Jumlah</th>
+                  </tr>
+                </thead>
+                <tbody id="tabelLinenInput"></tbody>
+              </table>
+            </div>
           </div>
           <!-- Form untuk Rumah Sakit -->
           <div id="formRS" style="display: none">
@@ -154,31 +157,37 @@
           <div class="card-title">🔍 Cari Nota</div>
           <div class="flex-row">
             <div class="form-group" style="flex: 1">
-              <label>Tanggal</label><input type="date" id="cariTanggal" />
+              <label>Tanggal</label>
+              <input type="date" id="cariTanggal" onchange="cariNotaSistem()" />
             </div>
-            <div class="form-group" style="flex: 1">
-              <label>Pelanggan</label><input type="text" id="cariPelanggan" oninput="cariNotaSistem()" />
+            <div class="form-group" style="flex: 2">
+              <label>Pelanggan</label>
+              <div class="search-box">
+                <input type="text" id="cariPelanggan" placeholder="Ketik nama pelanggan... (kosongkan = tampilkan semua)" oninput="onCariPelangganInput()" />
+                <button type="button" class="search-clear" id="cariPelangganClear" onclick="clearCariPelanggan()" title="Hapus pencarian" aria-label="Hapus pencarian">×</button>
+              </div>
             </div>
-            <button class="btn-sm btn-primary" onclick="cariNotaSistem()">Cari</button>
-            🔍
-            </button>
-            <button class="btn-sm btn-secondary" onclick="tampilkanSemuaNota()">
-              Semua
-            </button>
+            <button class="btn btn-primary" onclick="cariNotaSistem()" style="white-space:nowrap">🔍 Cari</button>
+            <button class="btn btn-secondary" onclick="tampilkanSemuaNota()" style="white-space:nowrap">📋 Semua</button>
           </div>
-          <table class="linen-table">
-            <thead>
-              <tr>
-                <th>No Nota</th>
-                <th>Tanggal</th>
-                <th>Pelanggan</th>
-                <th>Jenis</th>
-                <th>Total</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="tabelRiwayatNota"></tbody>
-          </table>
+          <div class="table-wrap">
+            <table class="linen-table linen-table--cards">
+              <thead>
+                <tr>
+                  <th>No Nota</th>
+                  <th>Tanggal</th>
+                  <th>Pelanggan</th>
+                  <th>Jenis</th>
+                  <th>Total</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="tabelRiwayatNota"></tbody>
+            </table>
+          </div>
+          <p style="font-size: 12px; color: var(--text-light); margin-top: 4px; text-align: right;">
+            💡 Kosongkan filter lalu klik "Cari" untuk menampilkan semua nota
+          </p>
         </div>
       </div>
 
@@ -193,25 +202,27 @@
             <div class="form-group" style="flex: 1">
               <label>Bulan</label><input type="month" id="invoiceBulanSelect" />
             </div>
-            <button class="btn btn-primary" onclick="hitungDanAmbilInvoice()">
+            <button class="btn btn-primary" onclick="hitungDanAmbilInvoice()" style="white-space:nowrap">
               🖲️ Hitung Invoice
             </button>
           </div>
         </div>
         <div class="card no-print" id="invoiceListCard" style="display: none">
           <div class="card-title">📋 Daftar Nota Periode Ini</div>
-          <table class="linen-table">
-            <thead>
-              <tr>
-                <th>No Nota</th>
-                <th>Tanggal</th>
-                <th>Layanan</th>
-                <th>Total</th>
-                <th>Aksi</th>
-              </tr>
-            </thead>
-            <tbody id="invoiceTableBody"></tbody>
-          </table>
+          <div class="table-wrap">
+            <table class="linen-table">
+              <thead>
+                <tr>
+                  <th>No Nota</th>
+                  <th>Tanggal</th>
+                  <th>Layanan</th>
+                  <th>Total</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="invoiceTableBody"></tbody>
+            </table>
+          </div>
         </div>
         <div class="card" id="invoiceResultCard" style="display: none">
           <div class="no-print" style="
@@ -236,17 +247,17 @@
             </div>
           </div>
           <div id="printMonthlyInvoiceArea"></div>
-          <div style="text-align: right; margin-top: 16px" class="no-print">
-            <button class="btn btn-success btn-sm" onclick="cetakInvoice()">
+          <div class="btn-row justify-end no-print" style="margin-top: 16px">
+            <button class="btn btn-success btn-sm" onclick="cetakInvoice()" style="white-space:nowrap">
               🖨️ Cetak Linen Room
             </button>
-            <button class="btn btn-primary btn-sm" onclick="downloadInvoice()">
+            <button class="btn btn-primary btn-sm" onclick="downloadInvoice()" style="white-space:nowrap">
               ⬇️ Download LR
             </button>
-            <button class="btn btn-primary btn-sm" onclick="downloadLinenRoomExcel()">
+            <button class="btn btn-primary btn-sm" onclick="downloadLinenRoomExcel()" style="white-space:nowrap">
               📥 Excel (.csv)
             </button>
-            <button class="btn btn-success btn-sm" onclick="cetakInvoicePelanggan()">
+            <button class="btn btn-success btn-sm" onclick="cetakInvoicePelanggan()" style="white-space:nowrap">
               🧾 Cetak Invoice
             </button>
           </div>
@@ -264,10 +275,10 @@
             <div class="form-group" style="flex: 1">
               <label>Bulan</label><input type="month" id="kuitansiBulanSelect" />
             </div>
-            <button class="btn btn-success" onclick="generateKuitansi()">
+            <button class="btn btn-success" onclick="generateKuitansi()" style="white-space:nowrap">
               🖨️ Cetak
             </button>
-            <button class="btn btn-primary" onclick="downloadKuitansi()">
+            <button class="btn btn-primary" onclick="downloadKuitansi()" style="white-space:nowrap">
               ⬇️ Download
             </button>
           </div>
@@ -313,29 +324,39 @@
         </div>
         <div class="card">
           <div class="card-title">🔍 Filter Pengeluaran</div>
+          <!-- SMART FILTER: auto-filter on change + inline clear (×), hapus tombol Filter & Reset -->
           <div class="flex-row">
             <div class="form-group">
-              <label>Dari</label><input type="date" id="filterExpMulai" />
+              <label>Dari</label>
+              <div class="search-box">
+                <input type="date" id="filterExpMulai" onchange="onFilterExpInput()" />
+                <button type="button" class="search-clear" id="filterExpMulaiClear" onclick="clearFilterExpField('mulai')" title="Hapus tanggal dari" aria-label="Hapus tanggal dari">×</button>
+              </div>
             </div>
             <div class="form-group">
-              <label>Sampai</label><input type="date" id="filterExpSelesai" />
+              <label>Sampai</label>
+              <div class="search-box">
+                <input type="date" id="filterExpSelesai" onchange="onFilterExpInput()" />
+                <button type="button" class="search-clear" id="filterExpSelesaiClear" onclick="clearFilterExpField('selesai')" title="Hapus tanggal sampai" aria-label="Hapus tanggal sampai">×</button>
+              </div>
             </div>
             <div class="form-group">
-              <label>Kategori</label><select id="filterExpKat">
-                <option value="">Semua</option>
-                <option>GAS</option>
-                <option>AIR</option>
-                <option>LISTRIK</option>
-                <option>LAIN</option>
-              </select>
+              <label>Kategori</label>
+              <div class="search-box">
+                <select id="filterExpKat" onchange="onFilterExpInput()">
+                  <option value="">Semua Kategori</option>
+                  <option>GAS</option>
+                  <option>AIR</option>
+                  <option>LISTRIK</option>
+                  <option>LAIN</option>
+                </select>
+                <button type="button" class="search-clear" id="filterExpKatClear" onclick="clearFilterExpField('kat')" title="Reset kategori" aria-label="Reset kategori">×</button>
+              </div>
             </div>
-            <button class="btn-sm btn-primary" onclick="hitungMenejemenKeuangan()">
-              Filter
-            </button>
-            <button class="btn-sm btn-secondary" onclick="resetFilterExp()">
-              Reset
-            </button>
           </div>
+          <p style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
+            💡 Filter aktif otomatis saat diubah. Kosongkan semua untuk menampilkan seluruh pengeluaran.
+          </p>
         </div>
         <div class="card" style="border-left: 4px solid var(--danger)">
           <div class="card-title" style="color: var(--danger)">
@@ -373,23 +394,19 @@
               <input type="text" id="expNominal" oninput="formatCurrencyInput(this)" />
             </div>
             <!-- Checkbox Sudah Dibayar -->
-            <div class="form-group" style="
-                  flex: 0 0 auto;
-                  display: flex;
-                  align-items: center;
-                  gap: 6px;
-                ">
+            <div class="form-group checkbox-group">
               <input type="checkbox" id="expLunas" checked style="width: auto" />
               <label for="expLunas" style="margin: 0; white-space: nowrap">Sudah Dibayar</label>
             </div>
-            <button class="btn btn-success" onclick="simpanBiayaOperasional()">
+            <button class="btn btn-success" onclick="simpanBiayaOperasional()" style="white-space:nowrap">
               ✓ Simpan
             </button>
           </div>
         </div>
         <div class="card">
           <div class="card-title">📜 Riwayat Pengeluaran</div>
-          <table class="linen-table">
+          <div class="table-wrap">
+          <table class="linen-table linen-table--cards">
             <thead>
               <tr>
                 <th>Tanggal</th>
@@ -401,6 +418,7 @@
             </thead>
             <tbody id="tabelRiwayatPengeluaran"></tbody>
           </table>
+          </div>
         </div>
       </div>
 
@@ -412,7 +430,7 @@
             Lihat dan cetak laporan laba rugi serta neraca sesuai periode yang
             dipilih di Dashboard Keuangan.
           </p>
-          <div style="display: flex; gap: 12px; margin-top: 12px">
+          <div class="btn-row">
             <button class="btn btn-primary" onclick="tampilkanLaporan()">
               👁️ View Laporan
             </button>
@@ -457,7 +475,13 @@
 
         <div class="card">
           <div class="card-title">📋 Daftar Utang Aktif</div>
-          <table class="linen-table">
+          <!-- SMART SEARCH: ganti tombol "Semua" dengan input + clear (×) -->
+          <div class="search-box" style="margin-bottom: 12px">
+            <input type="text" id="cariUtang" placeholder="Cari nama utang / keterangan... (kosongkan = tampilkan semua)" oninput="onCariUtangInput()" />
+            <button type="button" class="search-clear" id="cariUtangClear" onclick="clearCariUtang()" title="Hapus pencarian" aria-label="Hapus pencarian">×</button>
+          </div>
+          <div class="table-wrap">
+          <table class="linen-table linen-table--cards">
             <thead>
               <tr>
                 <th>Nama</th>
@@ -471,34 +495,39 @@
             </thead>
             <tbody id="tabelDaftarUtang"></tbody>
           </table>
+          </div>
         </div>
       </div>
 
       <!-- ==================== TAB: MASTER DATA ==================== -->
       <div id="tab-master" class="tab-content" style="display: none">
-        <div style="
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 12px;
-            ">
-          <h2 style="font-size: 20px; color: var(--primary)">
-            🛠️ Master Data
-          </h2>
-          <div style="display: flex; gap: 8px">
+        <div class="master-header">
+          <h2>🛠️ Master Data</h2>
+          <div class="actions">
             <button class="btn-sm btn-primary" onclick="bukaModalMasterLinen()">
               👔 Linen
             </button>
             <button class="btn-sm btn-secondary" onclick="bukaModalMasterJenisNota()">
               ⚡ Jenis Nota
             </button>
-            <button class="btn-sm btn-info" onclick="bukaModalAturLinenJenisNota()">
+            <button
+              id="btnAturLinenJenisNota"
+              class="btn-sm btn-info admin-only"
+              onclick="bukaModalAturLinen()"
+              style="display: none"
+              title="Atur linen yang tersedia untuk setiap jenis nota (Admin only)"
+            >
               📋 Atur Linen
             </button>
           </div>
         </div>
         <div class="card">
           <div class="card-title">🏥 Daftar Pelanggan</div>
+          <!-- SMART SEARCH: ganti tombol "Semua" dengan input + clear (×) -->
+          <div class="search-box" style="margin-bottom: 12px">
+            <input type="text" id="cariPelangganMaster" placeholder="Cari nama / kode pelanggan... (kosongkan = tampilkan semua)" oninput="onCariPelangganMasterInput()" />
+            <button type="button" class="search-clear" id="cariPelangganMasterClear" onclick="clearCariPelangganMaster()" title="Hapus pencarian" aria-label="Hapus pencarian">×</button>
+          </div>
           <div id="daftarPelangganContainer"></div>
           <div style="
                 margin-top: 24px;
@@ -568,13 +597,14 @@
               <label>Persentase (%)</label><input type="number" id="newKaryawanPersen" step="0.1" min="0" max="100"
                 placeholder="10" value="10" />
             </div>
-            <div style="align-items: flex-end; display: flex">
-              <button class="btn btn-success" onclick="tambahKaryawan()">
+            <div class="form-group" style="flex: 0 0 auto">
+              <label>&nbsp;</label><button class="btn btn-success" onclick="tambahKaryawan()">
                 ✓ Tambah
               </button>
             </div>
           </div>
-          <table class="linen-table">
+          <div class="table-wrap">
+          <table class="linen-table linen-table--cards">
             <thead>
               <tr>
                 <th>Nama</th>
@@ -585,6 +615,7 @@
             </thead>
             <tbody id="tabelMasterKaryawan"></tbody>
           </table>
+          </div>
         </div>
         <div class="card" style="border-left: 4px solid var(--info)">
           <div class="card-title" style="color: var(--info)">
@@ -620,9 +651,9 @@
                 oninput="formatCurrencyInput(this)" value="0" />
             </div>
           </div>
-          <div style="align-items: flex-end; display: flex">
+          <div class="btn-row justify-end">
             <button class="btn btn-success" onclick="simpanPengaturanGlobal()">
-              💾 Simpan
+              💾 Simpan Pengaturan
             </button>
           </div>
         </div>
@@ -709,7 +740,7 @@
             <div class="form-group" style="flex: 1">
               <label>Tanggal Selesai</label><input type="date" id="gajiTglSelesai" />
             </div>
-            <button class="btn btn-primary" onclick="tampilkanListGajiBaru()">
+            <button class="btn btn-primary" onclick="tampilkanListGajiBaru()" style="white-space:nowrap">
               📋 Tampilkan
             </button>
           </div>
@@ -798,6 +829,15 @@
       </div>
     </div>
     <!-- akhir .container -->
+
+    <!-- ==================== FAB (Floating Action Button) ==================== -->
+    <!-- FIX: Primary CTA floating, accessible thumb-reach on mobile.
+         Diisi dinamis oleh setupFAB(tabId) di script.js.
+         Di-hide di desktop via CSS @media (min-width: 1025px). -->
+    <button class="fab no-print" id="globalFab" aria-label="Aksi utama" style="display:none">
+      <span id="fabIcon">＋</span>
+      <span id="fabLabel" class="fab-label">Aksi</span>
+    </button>
   </div>
   <!-- akhir #appContent -->
 
@@ -808,6 +848,7 @@
       <button class="close-modal" onclick="tutupModalDetail()">×</button>
       <h3 id="modalNotaTitle">Detail Nota</h3>
       <div id="modalNotaMeta" style="margin-bottom: 16px; font-size: 14px; color: var(--text-light)"></div>
+      <div class="table-wrap">
       <table class="linen-table">
         <thead>
           <tr>
@@ -818,6 +859,7 @@
         </thead>
         <tbody id="modalLinenBody"></tbody>
       </table>
+      </div>
     </div>
   </div>
 
@@ -938,6 +980,7 @@
           </button>
         </div>
       </div>
+      <div class="table-wrap">
       <table class="linen-table">
         <thead>
           <tr>
@@ -948,6 +991,7 @@
         </thead>
         <tbody id="tabelMasterLinen"></tbody>
       </table>
+      </div>
     </div>
   </div>
 
@@ -987,6 +1031,7 @@
           </button>
         </div>
       </div>
+      <div class="table-wrap">
       <table class="linen-table">
         <thead>
           <tr>
@@ -998,20 +1043,86 @@
         </thead>
         <tbody id="tabelMasterJenisNota"></tbody>
       </table>
+      </div>
     </div>
   </div>
 
-  <!-- Atur Linen per Jenis Nota -->
+  <!-- Modal Atur Linen per Jenis Nota -->
   <div id="modalAturLinenJenisNota" class="modal">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width: 720px">
       <button class="close-modal" onclick="tutupModal('modalAturLinenJenisNota')">×</button>
       <h3>📋 Atur Linen per Jenis Nota</h3>
-      <div class="form-group">
-        <label>Jenis Nota</label>
-        <select id="aturLinenJenisSelect" onchange="loadLinenConfigForJenisNota()"></select>
+
+      <div class="form-group" style="margin-bottom: 16px">
+        <label><strong>Pilih Jenis Nota</strong></label>
+        <select
+          id="aturLinenJenisSelect"
+          onchange="renderCheckboxLinen()"
+          style="padding: 8px 10px; font-size: 14px"
+        >
+          <option value="">-- Pilih jenis nota --</option>
+        </select>
       </div>
-      <div id="aturLinenCheckboxes" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:12px;"></div>
-      <button id="btnSimpanLinenConfig" class="btn btn-success btn-block" onclick="simpanLinenConfigJenisNota()">💾 Simpan</button>
+
+      <div
+        id="aturLinenInfo"
+        style="
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          border-radius: 6px;
+          padding: 10px 14px;
+          margin-bottom: 12px;
+          font-size: 13px;
+          color: #1e3a5f;
+          display: none;
+        "
+      >
+        ℹ️ Centang linen yang ingin ditampilkan untuk jenis nota ini. Jika
+        kosong, tidak ada linen yang muncul di Input Nota.
+      </div>
+
+      <div
+        id="aturLinenEmptyState"
+        style="
+          text-align: center;
+          padding: 30px;
+          color: var(--text-light);
+          font-size: 14px;
+          display: none;
+        "
+      >
+        Belum ada master linen. Tambahkan linen via tombol 👔 Linen terlebih
+        dahulu.
+      </div>
+
+      <div id="aturLinenCheckboxList" class="atur-linen-grid"></div>
+
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: 18px;
+          padding-top: 14px;
+          border-top: 1px solid var(--border);
+        "
+      >
+        <div id="aturLinenCounter" style="font-size: 13px; color: var(--text-light)">
+          0 dari 0 linen dipilih
+        </div>
+        <div style="display: flex; gap: 8px">
+          <button class="btn btn-secondary" onclick="tutupModal('modalAturLinenJenisNota')">
+            Batal
+          </button>
+          <button
+            class="btn btn-success"
+            onclick="simpanAturLinen()"
+            id="btnSimpanAturLinen"
+          >
+            💾 Simpan
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1070,6 +1181,7 @@
         </div>
       </div>
       <h4 style="margin: 16px 0">💰 Daftar Harga Linen</h4>
+      <div class="table-wrap">
       <table class="linen-table">
         <thead>
           <tr>
@@ -1081,6 +1193,7 @@
         </thead>
         <tbody id="tabelHargaLinen"></tbody>
       </table>
+      </div>
       <button class="btn btn-success btn-block" onclick="simpanDetailPelanggan()">
         💾 Simpan Pelanggan & Harga
       </button>
