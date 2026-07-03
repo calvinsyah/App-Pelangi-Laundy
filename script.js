@@ -436,6 +436,7 @@ async function simpanNotaSistem() {
     const tgl = document.getElementById("notaTanggal").value;
     if (!tgl) { toast("Pilih tanggal!", "warning"); return; }
     const pelName = document.getElementById("pelangganSelect").value; const pData = pelangganList.find((p) => p.name === pelName);
+    if (!pData) { toast("Pilih pelanggan!", "warning"); return; }
     const jenis = document.getElementById("jenisNota").value;
     let items = [], total = 0;
     if (pData && pData.type === "RS") {
@@ -1028,7 +1029,7 @@ async function buildKuitansiHTML(pel, bln, logoUrl) {
   semua.forEach((nota) => {
     const j = nota.jenis;
     if (!totalsPerJenis[j]) totalsPerJenis[j] = 0;
-    if (isFlatCustomer && j === "FLAT") {
+    if (isFlatCustomer && (j === "FLAT" || j === "FLAT ASLI")) {
     } else {
       totalsPerJenis[j] += nota.total || 0;
     }
@@ -1612,8 +1613,15 @@ async function simpanPerubahanQtyNota() {
   }
 }
 
-async function hitungTotalEditPreview() {
+let _editPreviewTimer = null;
+function hitungTotalEditPreview() {
+  if (document.getElementById("editLinenModal").style.display !== "flex") return;
+  clearTimeout(_editPreviewTimer);
+  _editPreviewTimer = setTimeout(_hitungTotalEditPreviewCalc, 150);
+}
+async function _hitungTotalEditPreviewCalc() {
   const id = parseInt(document.getElementById("editNotaTargetId").value);
+  if (!id) return;
   const { data: notaList } = await db.from("nota").select("pelanggan_id").eq("id", id);
   if (!notaList || notaList.length === 0) return;
   const pData = pelangganList.find((p) => p.id === notaList[0].pelanggan_id);
@@ -2328,6 +2336,7 @@ async function simpanEditGajiBaru() {
   const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
+    if (!_gajiAktif) { toast("Data gaji tidak valid.", "error"); return; }
     const updates = { insentif: parseCurrencyValue(document.getElementById("editGajiInsentif").value), lembur: parseCurrencyValue(document.getElementById("editGajiLembur").value), potongan: parseCurrencyValue(document.getElementById("editGajiPotongan").value) };
     if (_gajiAktif.gajiId) {
       const { error } = await db.from("gaji").update(updates).eq("id", _gajiAktif.gajiId);
