@@ -516,7 +516,10 @@ async function toggleLockInvoice() {
   const key = getLockKey(pel, bln); const newLockState = !isInvoiceLocked(pel, bln);
   const { error } = await db.from("locks").upsert({ key, is_locked: newLockState }, { onConflict: "key" });
   if (error) { console.error("Gagal mengupdate kunci invoice:", error); toast("Gagal mengupdate kunci.", "error"); return; }
+  const locks = JSON.parse(localStorage.getItem("DB_LOCKS") || "{}");
+  locks[key] = newLockState; localStorage.setItem("DB_LOCKS", JSON.stringify(locks));
   updateLockBadgeDisplay(pel, bln); hitungDanAmbilInvoice();
+  toast(newLockState ? "Invoice dikunci." : "Invoice dibuka.", "info");
 }
 function updateLockBadgeDisplay(pel, bln) {
   const badge = document.getElementById("lockStatusBadge");
