@@ -239,13 +239,13 @@ function terbilang(angka) {
   const s = ["", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"];
   if (angka < 12) return s[angka];
   if (angka < 20) return terbilang(angka - 10) + " belas";
-  if (angka < 100) return s[Math.floor(angka / 10)] + " puluh " + terbilang(angka % 10);
+  if (angka < 100) { const sisa = angka % 10; return s[Math.floor(angka / 10)] + " puluh" + (sisa ? " " + terbilang(sisa) : ""); }
   if (angka < 200) return "seratus " + terbilang(angka - 100);
-  if (angka < 1000) return s[Math.floor(angka / 100)] + " ratus " + terbilang(angka % 100);
+  if (angka < 1000) { const sisa = angka % 100; return s[Math.floor(angka / 100)] + " ratus" + (sisa ? " " + terbilang(sisa) : ""); }
   if (angka < 2000) return "seribu " + terbilang(angka - 1000);
-  if (angka < 1e6) return (terbilang(Math.floor(angka / 1000)) + " ribu " + terbilang(angka % 1000));
-  if (angka < 1e9) return (terbilang(Math.floor(angka / 1e6)) + " juta " + terbilang(angka % 1e6));
-  return (terbilang(Math.floor(angka / 1e9)) + " milyar " + terbilang(angka % 1e9));
+  if (angka < 1e6) { const sisa = angka % 1000; return terbilang(Math.floor(angka / 1000)) + " ribu" + (sisa ? " " + terbilang(sisa) : ""); }
+  if (angka < 1e9) { const sisa = angka % 1e6; return terbilang(Math.floor(angka / 1e6)) + " juta" + (sisa ? " " + terbilang(sisa) : ""); }
+  const sisa = angka % 1e9; return terbilang(Math.floor(angka / 1e9)) + " milyar" + (sisa ? " " + terbilang(sisa) : "");
 }
 function generateNotaId(tgl) { return `${tgl.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`; }
 
@@ -687,7 +687,7 @@ async function buildLinenRoomHTML(pel, bln, logoUrl) {
   });
   semua.forEach((nota) => {
     const day = parseInt(nota.tanggal.split("-")[2], 10);
-    if (isFlatCustomer && nota.jenis !== "FLAT") return;
+    if (isFlatCustomer && nota.jenis !== "FLAT" && nota.jenis !== "FLAT ASLI") return;
     nota.items.forEach((it) => { if (it.idMaster && grid[it.idMaster] && day >= 1 && day <= 31) grid[it.idMaster].qty[day] += it.qty || 0; });
   });
   const namaBulan = new Date(bln + "-02").toLocaleDateString("id-ID", { month: "long", year: "numeric" }).toUpperCase();
@@ -1002,7 +1002,7 @@ async function downloadKuitansi() {
   loadingThen("Menyiapkan download Kuitansi", async () => {
     const logoUrl = await getLogoFromIndexedDB();
     const html = await buildKuitansiHTML(pel, bln, logoUrl);
-    downloadFile(html, `Kuitansi_${pel.replace(/\\s/g, "_")}_${bln}.html`);
+    downloadFile(html, `Kuitansi_${pel.replace(/\s/g, "_")}_${bln}.html`);
   });
 }
 
@@ -1235,7 +1235,7 @@ async function downloadSlipGaji(kId, mulai, selesai) {
     if (!html) return;
     const h = _hasilGaji.find((h) => h.karyawan.id == kId);
     if (!h) return;
-    const namaFile = `Slip_Gaji_${h.karyawan.nama.replace(/\\s/g, "_")}_${mulai}_${selesai}.html`;
+    const namaFile = `Slip_Gaji_${h.karyawan.nama.replace(/\s/g, "_")}_${mulai}_${selesai}.html`;
     downloadFile(html, namaFile);
   });
 }
@@ -1644,7 +1644,7 @@ function renderMasterJenisNotaTable() {
 }
 
 async function tambahLinen() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const name = document.getElementById("newLinenName").value.trim();
@@ -1874,7 +1874,7 @@ function renderDaftarPelanggan() {
 }
 
 async function tambahPelangganBaru() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const name = document.getElementById("newPelangganName").value.trim();
@@ -2025,7 +2025,7 @@ function renderEditLinenList(nota, pData) {
 }
 
 async function simpanDetailPelanggan() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const id = parseInt(document.getElementById("editPelangganId").value);
@@ -2155,7 +2155,7 @@ function renderMasterKaryawanTable() {
 }
 
 async function tambahKaryawan() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const nama = document.getElementById("newKaryawanNama").value.trim(); if (!nama) return toast("Nama wajib!", "warning");
@@ -2190,7 +2190,7 @@ async function hapusKaryawan(id) {
 }
 
 async function simpanPengaturanGlobal() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const updates = {
@@ -2205,7 +2205,7 @@ async function simpanPengaturanGlobal() {
 }
 
 async function simpanKopSurat() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const updates = { nama: document.getElementById("kopNama").value.trim(), alamat: document.getElementById("kopAlamat").value.trim(), telepon: document.getElementById("kopTelepon").value.trim(), email: document.getElementById("kopEmail").value.trim(), kontak: document.getElementById("kopContact").value.trim() };
@@ -2250,7 +2250,7 @@ function renderAbsensiTable() {
 }
 
 async function simpanAbsensi() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const tgl = document.getElementById("absensiTanggal").value; const promises = [];
@@ -2322,7 +2322,7 @@ function editGajiKaryawan(kId, mulai, selesai) {
 }
 
 async function simpanEditGajiBaru() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const updates = { insentif: parseCurrencyValue(document.getElementById("editGajiInsentif").value), lembur: parseCurrencyValue(document.getElementById("editGajiLembur").value), potongan: parseCurrencyValue(document.getElementById("editGajiPotongan").value) };
@@ -2359,7 +2359,7 @@ function renderBackupStatus() {
 }
 
 async function backupBulan(bln) {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     if (!await window.customConfirm(`Backup & hapus transaksi bulan ${bln}? Data master tetap aman.`)) return;
@@ -2390,7 +2390,7 @@ async function backupBulan(bln) {
 }
 
 async function backupSemuaBulanBelum() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const dbNota = JSON.parse(localStorage.getItem("DB_NOTA")) || []; const history = getBackupHistory();
@@ -2427,7 +2427,7 @@ async function backupSemuaBulanBelum() {
 }
 
 async function backupDanBersihkan() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     if (!await window.customConfirm("BACKUP SEMUA DATA LALU HAPUS SEMUA TRANSAKSI? Tindakan ini tidak bisa dibatalkan. Data master (pelanggan, linen, karyawan, pengaturan) TETAP AMAN.")) return;
@@ -2446,8 +2446,10 @@ async function backupDanBersihkan() {
       await db.from("locks").delete().filter("key", "not.is", null);
       await db.from("backup_history").delete().filter("bulan", "not.is", null);
     } catch (err) { console.error("Gagal menghapus dari Supabase:", err); toast("Gagal sinkronisasi hapus ke Supabase.", "error"); }
-    const keysToClear = ["DB_NOTA", "DB_BIAYA", "DB_ABSENSI", "DB_GAJI", "DB_PAYMENT_STATUS", "DB_LOCKS"];
-    keysToClear.forEach((k) => localStorage.setItem(k, JSON.stringify([])));
+    const keysToClearArr = ["DB_NOTA", "DB_BIAYA", "DB_ABSENSI", "DB_GAJI"];
+    keysToClearArr.forEach((k) => localStorage.setItem(k, JSON.stringify([])));
+    const keysToClearObj = ["DB_PAYMENT_STATUS", "DB_LOCKS"];
+    keysToClearObj.forEach((k) => localStorage.setItem(k, JSON.stringify({})));
     await refreshDataSistem(); renderBackupStatus(); toast("Backup berhasil & transaksi dibersihkan!", "success", 4000);
   } finally {
     setBtnLoading(btn, false);
@@ -2455,7 +2457,7 @@ async function backupDanBersihkan() {
 }
 
 async function exportAllData() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const tables = ["pelanggan", "jenis_nota", "master_linen", "karyawan", "absensi", "pengaturan", "kop", "harga_pelanggan", "nota", "biaya", "invoice_numbers", "invoice_counter", "payment_status", "locks", "utang", "gaji", "backup_history", "linen_pelanggan"];
@@ -2595,7 +2597,7 @@ function getUtangList() { return JSON.parse(localStorage.getItem("DB_UTANG")) ||
 function saveUtangList(list) { localStorage.setItem("DB_UTANG", JSON.stringify(list)); }
 
 async function simpanUtang() {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const nama = document.getElementById("utangNama").value.trim(); const dari = document.getElementById("utangDari").value; const sampai = document.getElementById("utangSampai").value; const cicilan = parseCurrencyValue(document.getElementById("utangCicilan").value); const keterangan = document.getElementById("utangKeterangan").value.trim();
@@ -2647,7 +2649,7 @@ function renderDaftarUtang() {
 }
 
 async function bayarCicilan(id) {
-  const btn = event?.target?.closest('button');
+  const btn = document.activeElement?.closest('button');
   setBtnLoading(btn, true);
   try {
     const { data: utangList } = await db.from("utang").select("*").eq("id", id);
@@ -2740,7 +2742,7 @@ function setupFAB(tabId) {
   document.getElementById("fabIcon").textContent = cfg.icon;
   document.getElementById("fabLabel").textContent = cfg.label;
   fab.className = `fab no-print fab-${cfg.variant}`;
-  fab.onclick = () => { try { window.eval(cfg.onclick); } catch (e) { console.error("FAB onclick error:", e); } };
+  fab.onclick = () => { try { const fn = window[cfg.onclick]; if (typeof fn === "function") fn(); else console.error("FAB: unknown function", cfg.onclick); } catch (e) { console.error("FAB onclick error:", e); } };
   fab.style.display = "flex";
 }
 function focusInputPengeluaran() {
