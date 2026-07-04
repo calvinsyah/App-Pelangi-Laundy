@@ -7,16 +7,6 @@ export default defineConfig(() => {
   return {
     plugins: [
       react(),
-      {
-        name: 'copy-scripts',
-        closeBundle() {
-          if (!fs.existsSync('dist')) {
-            fs.mkdirSync('dist');
-          }
-          fs.copyFileSync('script.js', 'dist/script.js');
-          fs.copyFileSync('supabaseClient.js', 'dist/supabaseClient.js');
-        }
-      }
     ],
     resolve: {
       alias: {
