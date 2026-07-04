@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Plus, Edit2, Trash2, Search, DollarSign, X, GripVertical } from 'lucide-react';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 
@@ -17,10 +19,43 @@ interface Pelanggan {
 }
 
 interface LinenConfigItem {
+  id: string; // for dnd-kit
   linen_id: number;
   nama: string;
   urutan: number;
   harga: number;
+}
+
+const SortableLinenItem: React.FC<{ item: LinenConfigItem, index: number, updateHarga: (i: number, v: string) => void }> = ({ item, index, updateHarga }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-4 p-3 bg-white border rounded-lg ${isDragging ? 'shadow-lg border-blue-500 ring-1 ring-blue-500 relative' : 'border-gray-200 hover:border-gray-300'}`}
+    >
+      <div {...attributes} {...listeners} className="cursor-grab hover:text-blue-500 text-gray-400 touch-none">
+        <GripVertical size={20} />
+      </div>
+      <div className="flex-1 font-medium text-gray-700">
+        {item.nama}
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-gray-500">Harga (Rp):</span>
+        <input
+          type="number"
+          value={item.harga}
+          onChange={(e) => updateHarga(index, e.target.value)}
+          className="border border-gray-300 rounded px-3 py-1 w-32 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function MasterPelanggan() {
@@ -42,6 +77,13 @@ export default function MasterPelanggan() {
   const [activePelanggan, setActivePelanggan] = useState<Pelanggan | null>(null);
   const [linenConfig, setLinenConfig] = useState<LinenConfigItem[]>([]);
   const [savingLinen, setSavingLinen] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const fetchPelanggan = async () => {
     setLoading(true);
@@ -120,6 +162,7 @@ export default function MasterPelanggan() {
         const lp = linenP?.find(x => x.linen_id === ml.id);
         const hp = hargaP?.find(x => x.linen_id === ml.id);
         return {
+          id: ml.id.toString(),
           linen_id: ml.id,
           nama: ml.nama,
           urutan: lp ? lp.urutan : 999, // default to end if not configured
@@ -134,7 +177,7 @@ export default function MasterPelanggan() {
       });
 
       // Normalize urutan 0, 1, 2...
-      config = config.map((c, i) => ({ ...c, urutan: i }));
+      config = config.map((c, i) => ({ ...c, urutan: i, id: c.linen_id.toString() }));
       setLinenConfig(config);
     }
   };
@@ -173,16 +216,16 @@ export default function MasterPelanggan() {
     setSavingLinen(false);
   };
 
-  const handleDragEnd = (result: DropResult) => {
-    if (!result.destination) return;
-    
-    const items = Array.from(linenConfig);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-    
-    // Update urutan
-    const newItems = items.map((item, index) => ({ ...item, urutan: index }));
-    setLinenConfig(newItems);
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setLinenConfig((items: LinenConfigItem[]) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        const newItems = arrayMove(items, oldIndex, newIndex);
+        return newItems.map((item, index) => ({ ...item, urutan: index }));
+      });
+    }
   };
 
   const updateHarga = (index: number, val: string) => {
@@ -362,42 +405,15 @@ export default function MasterPelanggan() {
             <p className="text-sm text-gray-500 mb-4">Seret ikon <GripVertical size={14} className="inline text-gray-400"/> untuk mengubah urutan linen saat input nota pelanggan ini.</p>
             
             <div className="flex-1 overflow-y-auto min-h-[400px]">
-              <DragDropContext onDragEnd={handleDragEnd}>
-                <Droppable droppableId="linen-list">
-                  {(provided) => (
-                    <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
-                      {linenConfig.map((item, index) => (
-                        <Draggable key={item.linen_id.toString()} draggableId={item.linen_id.toString()} index={index}>
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              className={`flex items-center gap-4 p-3 bg-white border rounded-lg ${snapshot.isDragging ? 'shadow-lg border-blue-500 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'}`}
-                            >
-                              <div {...provided.dragHandleProps} className="cursor-grab hover:text-blue-500 text-gray-400">
-                                <GripVertical size={20} />
-                              </div>
-                              <div className="flex-1 font-medium text-gray-700">
-                                {item.nama}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-500">Harga (Rp):</span>
-                                <input
-                                  type="number"
-                                  value={item.harga}
-                                  onChange={(e) => updateHarga(index, e.target.value)}
-                                  className="border border-gray-300 rounded px-3 py-1 w-32 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
-              </DragDropContext>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={linenConfig.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-2 p-1">
+                    {linenConfig.map((item, index) => (
+                      <SortableLinenItem key={item.id} item={item} index={index} updateHarga={updateHarga} />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </div>
 
             <div className="mt-6 pt-4 border-t flex justify-end gap-3">
