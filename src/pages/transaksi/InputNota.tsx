@@ -1,11 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Plus, Trash2 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+
+interface ConfiguredLinen {
+  linen_id: number;
+  nama: string;
+  urutan: number;
+  harga: number;
+  qty: number;
+}
 
 export default function InputNota() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const editNotaId = location.state?.editNotaId;
+
   const [pelangganList, setPelangganList] = useState<any[]>([]);
   const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
-  const [linenList, setLinenList] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,37 +29,164 @@ export default function InputNota() {
     berat_kg: 0,
   });
 
-  const [items, setItems] = useState<{linen_id: string, qty: number}[]>([]);
+  const [baseLinenConfig, setBaseLinenConfig] = useState<ConfiguredLinen[]>([]);
+  const [displayedLinen, setDisplayedLinen] = useState<ConfiguredLinen[]>([]);
+  const [editItems, setEditItems] = useState<any[] | null>(null);
+
+  // Fetch Nota for Editing
+  useEffect(() => {
+    if (editNotaId) {
+      const fetchEditNota = async () => {
+        setLoading(true);
+        const { data, error } = await supabase.from('nota').select('*').eq('id', editNotaId).single();
+        if (data && !error) {
+          setFormData({
+            tanggal: data.tanggal,
+            pelanggan_id: data.pelanggan_id.toString(),
+            jenis_nota_id: data.jenis_nota_id ? data.jenis_nota_id.toString() : '',
+            berat_kg: data.berat_kg || 0,
+          });
+          if (data.items) {
+            setEditItems(data.items);
+          }
+        }
+        setLoading(false);
+      };
+      fetchEditNota();
+    }
+  }, [editNotaId]);
 
   useEffect(() => {
     const fetchMasterData = async () => {
-      const [pel, jenis, linen] = await Promise.all([
-        supabase.from('pelanggan').select('id, nama, tipe_billing'),
-        supabase.from('jenis_nota').select('id, nama, berlaku_reguler, berlaku_flat'),
-        supabase.from('master_linen').select('id, nama')
+      const [pel, jenis] = await Promise.all([
+        supabase.from('pelanggan').select('id, nama, tipe, tipe_billing, tarif_flat, tarif_rs'),
+        supabase.from('jenis_nota').select('id, nama, berlaku_reguler, berlaku_flat, linen_config, multiplier')
       ]);
       setPelangganList(pel.data || []);
-      setJenisNotaList(jenis.data || []);
-      setLinenList(linen.data || []);
+      
+      // Pastikan ada KILOAN jika belum ada
+      let jData = jenis.data || [];
+      if (!jData.find(j => j.nama === 'KILOAN')) {
+        jData.push({ id: 0, nama: 'KILOAN', berlaku_reguler: true, berlaku_flat: false, linen_config: [], multiplier: 1 });
+      }
+      setJenisNotaList(jData);
     };
     fetchMasterData();
   }, []);
 
   const selectedPelanggan = pelangganList.find(p => p.id.toString() === formData.pelanggan_id);
+  const isRS = selectedPelanggan?.tipe === 'RS';
   const isFlat = selectedPelanggan?.tipe_billing === 'Flat';
 
-  const addItem = () => {
-    setItems([...items, { linen_id: '', qty: 1 }]);
+  // Logika Filter Jenis Nota berdasarkan Tipe Pelanggan
+  const getFilteredJenisNota = () => {
+    if (!selectedPelanggan) return jenisNotaList;
+    if (isRS) return jenisNotaList.filter(j => j.nama === 'KILOAN');
+    if (selectedPelanggan.tipe === 'Hotel') {
+      if (isFlat) return jenisNotaList.filter(j => j.berlaku_flat);
+      return jenisNotaList.filter(j => j.berlaku_reguler);
+    }
+    return jenisNotaList;
   };
+  const filteredJenisNotaList = getFilteredJenisNota();
 
-  const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
+  // Auto-select jenis_nota jika RS
+  useEffect(() => {
+    if (isRS) {
+      const kiloan = jenisNotaList.find(j => j.nama === 'KILOAN');
+      if (kiloan && formData.jenis_nota_id !== kiloan.id.toString()) {
+        setFormData(prev => ({ ...prev, jenis_nota_id: kiloan.id.toString() }));
+      }
+    } else if (formData.pelanggan_id && !formData.jenis_nota_id && filteredJenisNotaList.length > 0) {
+      // Auto-select first available option to prevent empty state
+      setFormData(prev => ({ ...prev, jenis_nota_id: filteredJenisNotaList[0].id.toString() }));
+    }
+  }, [formData.pelanggan_id, isRS, jenisNotaList, filteredJenisNotaList]);
 
-  const updateItem = (index: number, field: string, value: string | number) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
-    setItems(newItems);
+  // Fetch Base Linen Pelanggan Config
+  useEffect(() => {
+    const fetchLinenConfig = async () => {
+      if (!formData.pelanggan_id) {
+        setBaseLinenConfig([]);
+        return;
+      }
+      const pId = parseInt(formData.pelanggan_id);
+      const [mlRes, lpRes, hpRes] = await Promise.all([
+        supabase.from('master_linen').select('*').order('id'),
+        supabase.from('linen_pelanggan').select('*').eq('pelanggan_id', pId),
+        supabase.from('harga_pelanggan').select('*').eq('pelanggan_id', pId)
+      ]);
+
+      if (mlRes.data) {
+        let config: ConfiguredLinen[] = mlRes.data.map(ml => {
+          const lp = lpRes.data?.find(x => x.linen_id === ml.id);
+          const hp = hpRes.data?.find(x => x.linen_id === ml.id);
+          return {
+            linen_id: ml.id,
+            nama: ml.nama,
+            urutan: lp ? lp.urutan : 999,
+            harga: hp ? hp.harga : 0,
+            qty: 0
+          };
+        });
+        config.sort((a, b) => {
+          if (a.urutan === b.urutan) return a.linen_id - b.linen_id;
+          return a.urutan - b.urutan;
+        });
+        setBaseLinenConfig(config);
+      }
+    };
+    fetchLinenConfig();
+  }, [formData.pelanggan_id]);
+
+  // Terapkan filter linen_config dari jenis_nota yang dipilih (2nd layer filter)
+  useEffect(() => {
+    if (!formData.jenis_nota_id || baseLinenConfig.length === 0) {
+      setDisplayedLinen([]);
+      return;
+    }
+    const selectedJenis = jenisNotaList.find(j => j.id.toString() === formData.jenis_nota_id);
+    if (!selectedJenis) return;
+
+    let finalLinen = [...baseLinenConfig];
+    
+    // Jika jenis nota memiliki linen_config, filter dan urutkan ulang berdasarkan itu!
+    if (selectedJenis.linen_config && selectedJenis.linen_config.length > 0) {
+      const allowedIds = new Set(selectedJenis.linen_config.map((c: any) => c.id));
+      const orderMap: Record<number, number> = {};
+      selectedJenis.linen_config.forEach((c: any) => {
+        orderMap[c.id] = c.urutan;
+      });
+
+      finalLinen = finalLinen.filter(l => allowedIds.has(l.linen_id));
+      finalLinen.sort((a, b) => {
+        const oa = orderMap[a.linen_id] ?? 999;
+        const ob = orderMap[b.linen_id] ?? 999;
+        return oa - ob;
+      });
+    }
+
+    // Apply multiplier to harga
+    const multiplier = selectedJenis.multiplier || 1;
+    finalLinen = finalLinen.map(l => ({ ...l, harga: Math.floor(l.harga * multiplier) }));
+
+    // Inject edit quantities if editing
+    if (editItems) {
+      finalLinen = finalLinen.map(l => {
+        const found = editItems.find((ei: any) => ei.linen_id === l.linen_id);
+        return found ? { ...l, qty: found.qty, harga: found.harga } : l; // retain historical price if editing
+      });
+    }
+
+    setDisplayedLinen(finalLinen);
+  }, [formData.jenis_nota_id, baseLinenConfig, jenisNotaList, editItems]);
+
+
+  const updateQty = (index: number, val: string) => {
+    const num = parseInt(val) || 0;
+    const newLinen = [...displayedLinen];
+    newLinen[index].qty = Math.max(0, num);
+    setDisplayedLinen(newLinen);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,23 +195,23 @@ export default function InputNota() {
     setError(null);
     setSuccess(null);
 
-    // Validation (Bug B2 fix: total > 0)
+    const validItems = displayedLinen.filter(item => item.qty > 0).map(item => ({
+      linen_id: item.linen_id,
+      nama: item.nama, // save name for historical accuracy in JSONB
+      qty: item.qty,
+      harga: item.harga
+    }));
+
     let valid = true;
-    if (isFlat) {
+    if (isFlat || isRS) {
       if (formData.berat_kg <= 0) {
-        setError('Berat (Kg) harus lebih dari 0 untuk nota Flat.');
+        setError('Berat (Kg) harus lebih dari 0 untuk nota Kiloan/Flat.');
         valid = false;
       }
     } else {
-      if (items.length === 0) {
-        setError('Harus ada minimal 1 item untuk nota Reguler.');
+      if (validItems.length === 0) {
+        setError('Harus ada minimal 1 item dengan kuantitas > 0 untuk nota Reguler.');
         valid = false;
-      } else {
-        const totalQty = items.reduce((sum, item) => sum + Number(item.qty), 0);
-        if (totalQty <= 0) {
-          setError('Total kuantitas item harus lebih dari 0.');
-          valid = false;
-        }
       }
     }
 
@@ -82,40 +220,35 @@ export default function InputNota() {
       return;
     }
 
-    // Call Edge Function or direct insert
-    // PRD requests Edge Function `nota-create` but we will simulate direct insert for now
-    // Since Edge Function setup requires CLI which user has to run
     try {
-      // Basic insert for demonstration, to be replaced by edge function
-      const { data: nota, error: notaErr } = await supabase
-        .from('nota')
-        .insert([{
-          tanggal: formData.tanggal,
-          pelanggan_id: formData.pelanggan_id,
-          jenis_nota_id: formData.jenis_nota_id,
-          berat_kg: isFlat ? formData.berat_kg : null,
-          status_bayar: 'Belum',
-          items: isFlat ? null : items
-        }])
-        .select()
-        .single();
-        
-      if (notaErr) throw notaErr;
+      const notaData = {
+        tanggal: formData.tanggal,
+        pelanggan_id: parseInt(formData.pelanggan_id),
+        jenis_nota_id: parseInt(formData.jenis_nota_id) === 0 ? null : parseInt(formData.jenis_nota_id),
+        jenis: jenisNotaList.find(j => j.id.toString() === formData.jenis_nota_id)?.nama || 'KILOAN',
+        berat_kg: (isFlat || isRS) ? formData.berat_kg : null,
+        status_bayar: 'Belum',
+        items: (isFlat || isRS) ? null : validItems
+      };
 
-      if (!isFlat && items.length > 0) {
-        // Insert items
-        const itemInserts = items.map(item => ({
-          nota_id: nota.id,
-          linen_id: item.linen_id,
-          qty: item.qty
-        }));
-        // Assuming table `nota_items` exists (not listed in PRD explicitly but implied)
-        // await supabase.from('nota_items').insert(itemInserts);
+      if (editNotaId) {
+        // Prevent changing status_bayar if it's already Lunas
+        const { error: notaErr } = await supabase
+          .from('nota')
+          .update(notaData)
+          .eq('id', editNotaId);
+        if (notaErr) throw notaErr;
+        setSuccess('Nota berhasil diperbarui!');
+        setTimeout(() => navigate('/transaksi/riwayat'), 1500);
+      } else {
+        const { error: notaErr } = await supabase
+          .from('nota')
+          .insert([notaData]);
+        if (notaErr) throw notaErr;
+        setSuccess('Nota berhasil disimpan!');
+        setFormData({ ...formData, berat_kg: 0 });
+        setDisplayedLinen(displayedLinen.map(c => ({...c, qty: 0})));
       }
-
-      setSuccess('Nota berhasil disimpan!');
-      setFormData({ ...formData, berat_kg: 0 });
-      setItems([]);
     } catch (err: any) {
       setError(err.message || 'Terjadi kesalahan');
     }
@@ -124,9 +257,11 @@ export default function InputNota() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Input Nota Baru</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">
+        {editNotaId ? 'Edit Nota' : 'Input Nota Baru'}
+      </h2>
       
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-3xl">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-4xl">
         {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
         {success && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">{success}</div>}
         
@@ -134,119 +269,94 @@ export default function InputNota() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
               <label className="block text-gray-700 text-sm font-bold mb-2">Tanggal</label>
-              <input
-                type="date"
-                value={formData.tanggal}
-                onChange={(e) => setFormData({...formData, tanggal: e.target.value})}
-                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
+              <input type="date" value={formData.tanggal} onChange={(e) => setFormData({...formData, tanggal: e.target.value})} className="shadow border rounded w-full py-2 px-3 focus:ring-2 focus:ring-blue-500" required />
             </div>
             <div>
               <label className="block text-gray-700 text-sm font-bold mb-2">Pelanggan</label>
-              <select
-                value={formData.pelanggan_id}
-                onChange={(e) => setFormData({...formData, pelanggan_id: e.target.value})}
-                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
+              <select value={formData.pelanggan_id} onChange={(e) => setFormData({...formData, pelanggan_id: e.target.value})} className="shadow border rounded w-full py-2 px-3 focus:ring-2 focus:ring-blue-500" required>
                 <option value="">-- Pilih Pelanggan --</option>
                 {pelangganList.map(p => (
-                  <option key={p.id} value={p.id}>{p.nama} ({p.tipe_billing})</option>
+                  <option key={p.id} value={p.id}>{p.nama} ({p.tipe === 'RS' ? 'RS' : p.tipe_billing})</option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-gray-700 text-sm font-bold mb-2">Jenis Nota</label>
-              <select
-                value={formData.jenis_nota_id}
-                onChange={(e) => setFormData({...formData, jenis_nota_id: e.target.value})}
-                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <select 
+                value={formData.jenis_nota_id} 
+                onChange={(e) => setFormData({...formData, jenis_nota_id: e.target.value})} 
+                className={`shadow border rounded w-full py-2 px-3 focus:ring-2 focus:ring-blue-500 ${isRS ? 'bg-gray-100 cursor-not-allowed text-gray-600' : ''}`}
                 required
+                disabled={isRS}
               >
                 <option value="">-- Pilih Jenis Nota --</option>
-                {jenisNotaList.map(j => (
+                {filteredJenisNotaList.map(j => (
                   <option key={j.id} value={j.id}>{j.nama}</option>
                 ))}
               </select>
             </div>
             
-            {isFlat && (
+            {(isFlat || isRS) && (
               <div>
                 <label className="block text-gray-700 text-sm font-bold mb-2">Berat (Kg)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={formData.berat_kg}
-                  onChange={(e) => setFormData({...formData, berat_kg: parseFloat(e.target.value)})}
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
+                <input type="number" step="0.1" value={formData.berat_kg} onChange={(e) => setFormData({...formData, berat_kg: parseFloat(e.target.value)})} className="shadow border rounded w-full py-2 px-3 focus:ring-2 focus:ring-blue-500 bg-blue-50 border-blue-200" required />
+                {isRS && selectedPelanggan && (
+                  <p className="text-xs text-blue-600 mt-1 font-semibold">Tarif RS: Rp {(selectedPelanggan.tarif_rs || 0).toLocaleString('id-ID')} / KG</p>
+                )}
               </div>
             )}
           </div>
 
-          {!isFlat && formData.pelanggan_id && (
+          {(!isFlat && !isRS) && formData.pelanggan_id && displayedLinen.length > 0 && (
             <div className="mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-gray-700">Item Linen</h3>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-md text-sm font-medium flex items-center gap-1 transition-colors"
-                >
-                  <Plus size={16} /> Tambah Item
-                </button>
-              </div>
-              
-              {items.length === 0 ? (
-                <div className="text-center text-gray-500 py-4 border-2 border-dashed border-gray-200 rounded-lg">
-                  Belum ada item. Klik Tambah Item.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {items.map((item, index) => (
-                    <div key={index} className="flex gap-2 items-center">
-                      <select
-                        value={item.linen_id}
-                        onChange={(e) => updateItem(index, 'linen_id', e.target.value)}
-                        className="flex-1 shadow appearance-none border rounded py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      >
-                        <option value="">-- Pilih Linen --</option>
-                        {linenList.map(l => (
-                          <option key={l.id} value={l.id}>{l.nama}</option>
-                        ))}
-                      </select>
+              <h3 className="text-lg font-bold text-gray-700 mb-4 pb-2 border-b">Item Linen (Kuantitas)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {displayedLinen.map((item, index) => (
+                  <div key={item.linen_id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex flex-col justify-between hover:border-blue-300 transition-colors">
+                    <div className="mb-2">
+                      <span className="font-semibold text-gray-800 block">{item.nama}</span>
+                      <span className="text-xs text-green-600 font-medium">Rp {item.harga.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-gray-600">Qty:</label>
                       <input
                         type="number"
-                        min="1"
-                        value={item.qty}
-                        onChange={(e) => updateItem(index, 'qty', parseInt(e.target.value))}
-                        className="w-24 shadow appearance-none border rounded py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
+                        min="0"
+                        value={item.qty === 0 ? '' : item.qty}
+                        onChange={(e) => updateQty(index, e.target.value)}
+                        className="shadow-sm border rounded w-full py-1.5 px-2 focus:ring-2 focus:ring-blue-500"
+                        placeholder="0"
                       />
-                      <button
-                        type="button"
-                        onClick={() => removeItem(index)}
-                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
-                      >
-                        <Trash2 size={20} />
-                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          <div className="flex justify-end pt-4 border-t border-gray-100">
+          {(!isFlat && !isRS) && formData.pelanggan_id && displayedLinen.length === 0 && formData.jenis_nota_id && (
+            <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200 mb-6 text-gray-500">
+              Belum ada linen yang diatur untuk pelanggan atau jenis nota ini. <br/>
+              Silakan atur di Master Pelanggan atau Master Jenis Nota.
+            </div>
+          )}
+
+          <div className="sticky bottom-0 bg-white p-4 border-t border-gray-200 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.1)] flex justify-between z-10 -mx-6 -mb-6 rounded-b-xl mt-8">
+            {editNotaId ? (
+              <button
+                type="button"
+                onClick={() => navigate('/transaksi/riwayat')}
+                className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 px-6 rounded-lg transition-colors"
+              >
+                Batal
+              </button>
+            ) : <div />}
             <button
               type="submit"
-              disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors disabled:opacity-50"
+              disabled={loading || (!formData.pelanggan_id)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-8 rounded-lg transition-colors disabled:opacity-50 shadow-lg shadow-blue-500/30 w-full sm:w-auto ml-2 sm:ml-0"
             >
-              {loading ? 'Menyimpan...' : 'Simpan Nota'}
+              {loading ? 'Menyimpan...' : (editNotaId ? 'Perbarui Nota' : 'Simpan Nota')}
             </button>
           </div>
         </form>

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Plus, Edit2, Trash2, Search, Check } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Check, DollarSign } from 'lucide-react';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
+import { fmtRp, formatCurrencyInput, parseCurrencyValue } from '../../lib/utils';
 
 interface Utang {
   id: number;
@@ -18,13 +21,16 @@ export default function Utang() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     nama: '',
     dari: '',
     sampai: '',
-    cicilan: 0,
+    cicilan: '',
     keterangan: '',
     sisa_bulan: 0,
     status: 'AKTIF'
@@ -39,6 +45,7 @@ export default function Utang() {
     
     if (error) {
       console.error('Error fetching utang:', error);
+      toast('Gagal mengambil data utang', 'error');
     } else {
       setUtangs(data || []);
     }
@@ -49,51 +56,112 @@ export default function Utang() {
     fetchUtangs();
   }, []);
 
+  const calculateSisaBulan = (dari: string, sampai: string) => {
+    if (!dari || !sampai) return 0;
+    const [tahunDari, bulanDari] = dari.split('-').map(Number);
+    const [tahunSampai, bulanSampai] = sampai.split('-').map(Number);
+    return (tahunSampai - tahunDari) * 12 + (bulanSampai - bulanDari) + 1;
+  };
+
+  const handleDariChange = (val: string) => {
+    const newSisa = calculateSisaBulan(val, formData.sampai);
+    setFormData(prev => ({ ...prev, dari: val, sisa_bulan: newSisa > 0 ? newSisa : 0 }));
+  };
+
+  const handleSampaiChange = (val: string) => {
+    const newSisa = calculateSisaBulan(formData.dari, val);
+    setFormData(prev => ({ ...prev, sampai: val, sisa_bulan: newSisa > 0 ? newSisa : 0 }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsedCicilan = parseCurrencyValue(formData.cicilan);
+    
+    const dataToSave = {
+      nama: formData.nama,
+      dari: formData.dari,
+      sampai: formData.sampai,
+      cicilan: parsedCicilan,
+      keterangan: formData.keterangan,
+      sisa_bulan: formData.sisa_bulan,
+      status: formData.status
+    };
+
     if (editId) {
-      const { error } = await supabase
-        .from('utang')
-        .update(formData)
-        .eq('id', editId);
+      const { error } = await supabase.from('utang').update(dataToSave).eq('id', editId);
       if (!error) {
+        toast('Utang berhasil diubah', 'success');
         setIsModalOpen(false);
         fetchUtangs();
+      } else {
+        toast('Gagal mengubah utang', 'error');
       }
     } else {
-      const { error } = await supabase
-        .from('utang')
-        .insert([formData]);
+      const { error } = await supabase.from('utang').insert([dataToSave]);
       if (!error) {
+        toast('Utang berhasil ditambahkan', 'success');
         setIsModalOpen(false);
         fetchUtangs();
+      } else {
+        toast('Gagal menambahkan utang', 'error');
       }
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Yakin ingin menghapus data utang ini?')) {
-      await supabase.from('utang').delete().eq('id', id);
-      fetchUtangs();
+    const ok = await confirm('Yakin ingin menghapus data utang ini?');
+    if (ok) {
+      const { error } = await supabase.from('utang').delete().eq('id', id);
+      if (!error) {
+        toast('Utang dihapus', 'success');
+        fetchUtangs();
+      } else {
+        toast('Gagal menghapus utang', 'error');
+      }
     }
   };
 
-  const handleLunas = async (id: number) => {
-    const { error } = await supabase
-      .from('utang')
-      .update({ status: 'LUNAS', sisa_bulan: 0 })
-      .eq('id', id);
-    if (!error) {
+  const bayarCicilan = async (u: Utang) => {
+    if (u.sisa_bulan <= 0) {
+      return toast('Utang sudah lunas!', 'warning');
+    }
+    const ok = await confirm(`Bayar cicilan bulan ini untuk ${u.nama} sebesar ${fmtRp(u.cicilan)}?`);
+    if (!ok) return;
+
+    try {
+      // 1. Insert ke tabel biaya
+      const { error: errBiaya } = await supabase.from('biaya').insert([{
+        kategori: "CICILAN UTANG",
+        nominal: u.cicilan,
+        lunas: true,
+        tanggal: new Date().toISOString().split('T')[0]
+      }]);
+
+      if (errBiaya) throw errBiaya;
+
+      // 2. Update utang (sisa_bulan - 1)
+      const newSisa = u.sisa_bulan - 1;
+      const newStatus = newSisa <= 0 ? 'LUNAS' : 'AKTIF';
+      
+      const { error: errUtang } = await supabase.from('utang').update({
+        sisa_bulan: newSisa,
+        status: newStatus
+      }).eq('id', u.id);
+
+      if (errUtang) throw errUtang;
+
+      toast(`Berhasil membayar cicilan ${u.nama}. Sisa: ${newSisa} bulan`, 'success');
       fetchUtangs();
+    } catch (err) {
+      console.error(err);
+      toast('Terjadi kesalahan saat membayar cicilan', 'error');
     }
   };
 
   const filteredUtangs = utangs.filter(u => 
     u.nama.toLowerCase().includes(search.toLowerCase()) ||
-    u.keterangan.toLowerCase().includes(search.toLowerCase())
+    (u.keterangan || '').toLowerCase().includes(search.toLowerCase())
   );
-
-  const fmtRp = (val: number) => "Rp " + val.toLocaleString("id-ID");
 
   return (
     <div>
@@ -106,7 +174,7 @@ export default function Utang() {
               nama: '',
               dari: '',
               sampai: '',
-              cicilan: 0,
+              cicilan: '',
               keterangan: '',
               sisa_bulan: 0,
               status: 'AKTIF'
@@ -172,11 +240,11 @@ export default function Utang() {
                     <td className="p-4 text-right space-x-2">
                       {u.status === 'AKTIF' && (
                         <button
-                          onClick={() => handleLunas(u.id)}
-                          className="text-green-600 hover:text-green-800 p-2 rounded-md hover:bg-green-50 transition-colors"
-                          title="Tandai Lunas"
+                          onClick={() => bayarCicilan(u)}
+                          className="text-emerald-600 hover:text-emerald-800 p-2 rounded-md hover:bg-emerald-50 transition-colors"
+                          title="Bayar Cicilan Bulan Ini"
                         >
-                          <Check size={18} />
+                          <DollarSign size={18} />
                         </button>
                       )}
                       <button
@@ -186,7 +254,7 @@ export default function Utang() {
                             nama: u.nama,
                             dari: u.dari,
                             sampai: u.sampai,
-                            cicilan: u.cicilan,
+                            cicilan: formatCurrencyInput(u.cicilan),
                             keterangan: u.keterangan,
                             sisa_bulan: u.sisa_bulan,
                             status: u.status
@@ -231,10 +299,9 @@ export default function Utang() {
                 <div>
                   <label className="block text-gray-700 text-sm font-bold mb-2">Mulai (Bulan/Thn)</label>
                   <input
-                    type="text"
+                    type="month"
                     value={formData.dari}
-                    onChange={(e) => setFormData({...formData, dari: e.target.value})}
-                    placeholder="Contoh: Jan 2026"
+                    onChange={(e) => handleDariChange(e.target.value)}
                     className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
@@ -242,24 +309,26 @@ export default function Utang() {
                 <div>
                   <label className="block text-gray-700 text-sm font-bold mb-2">Tenor Hingga</label>
                   <input
-                    type="text"
+                    type="month"
                     value={formData.sampai}
-                    onChange={(e) => setFormData({...formData, sampai: e.target.value})}
-                    placeholder="Contoh: Des 2026"
+                    onChange={(e) => handleSampaiChange(e.target.value)}
                     className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
                 </div>
               </div>
-              <div className="mb-4">
+              <div className="mb-4 relative">
                 <label className="block text-gray-700 text-sm font-bold mb-2">Cicilan / Bulan (Rp)</label>
-                <input
-                  type="number"
-                  value={formData.cicilan}
-                  onChange={(e) => setFormData({...formData, cicilan: parseInt(e.target.value) || 0})}
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
+                  <input
+                    type="text"
+                    value={formData.cicilan}
+                    onChange={(e) => setFormData({...formData, cicilan: formatCurrencyInput(e.target.value)})}
+                    className="shadow appearance-none border rounded w-full py-2 pl-10 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
               </div>
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-bold mb-2">Sisa Tenor (Bulan)</label>
@@ -267,8 +336,9 @@ export default function Utang() {
                   type="number"
                   value={formData.sisa_bulan}
                   onChange={(e) => setFormData({...formData, sisa_bulan: parseInt(e.target.value) || 0})}
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-100"
                   required
+                  readOnly={!editId} // Hanya readonly kalau tambah baru, biar otomatis
                 />
               </div>
               <div className="mb-4">

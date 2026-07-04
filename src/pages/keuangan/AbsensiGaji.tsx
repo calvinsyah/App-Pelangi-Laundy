@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Save, Calendar, DollarSign, Edit, Printer } from 'lucide-react';
+import { Save, Calendar, DollarSign, Edit, Printer, Download } from 'lucide-react';
+import { generateKopHTML, buildSlipGajiHTML, openPrintWindow, downloadHTML } from '../../lib/printUtils';
 
 interface Karyawan {
   id: number;
@@ -234,6 +235,23 @@ export default function AbsensiGaji() {
 
   const fmtRp = (val: number) => "Rp " + val.toLocaleString("id-ID");
 
+  const getKop = async () => {
+    const { data } = await supabase.from('pengaturan').select('*').limit(1);
+    return generateKopHTML(data?.[0] || { nama: 'PELANGI LAUNDRY' });
+  };
+
+  const handleCetakSlip = async (h: any) => {
+    const kopHTML = await getKop();
+    const html = buildSlipGajiHTML(h, kopHTML);
+    openPrintWindow(html, `Slip Gaji - ${h.karyawan.nama}`);
+  };
+
+  const handleDownloadSlip = async (h: any) => {
+    const kopHTML = await getKop();
+    const html = buildSlipGajiHTML(h, kopHTML);
+    downloadHTML(html, `Slip_Gaji_${h.karyawan.nama.replace(/\s/g, '_')}_${h.periodeMulai}_${h.periodeSelesai}.html`);
+  };
+
   return (
     <div className="space-y-8">
       {/* Modul Absensi */}
@@ -350,10 +368,25 @@ export default function AbsensiGaji() {
                     <td className="py-3 text-gray-800">{fmtRp(h.lembur)}</td>
                     <td className="py-3 text-red-600">{fmtRp(h.potongan)}</td>
                     <td className="py-3 font-bold text-gray-900">{fmtRp(h.totalDiterima)}</td>
-                    <td className="py-3 text-right space-x-2">
+                    <td className="py-3 text-right space-x-1">
+                      <button
+                        onClick={() => handleCetakSlip(h)}
+                        className="text-emerald-600 hover:text-emerald-800 p-1.5 rounded hover:bg-emerald-50 transition-colors"
+                        title="Cetak Slip HTML"
+                      >
+                        <Printer size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDownloadSlip(h)}
+                        className="text-indigo-600 hover:text-indigo-800 p-1.5 rounded hover:bg-indigo-50 transition-colors"
+                        title="Download Slip HTML"
+                      >
+                        <Download size={16} />
+                      </button>
                       <button
                         onClick={() => handleEditGaji(h)}
                         className="text-blue-600 hover:text-blue-800 p-1.5 rounded hover:bg-blue-50 transition-colors"
+                        title="Edit Komponen Gaji"
                       >
                         <Edit size={16} />
                       </button>

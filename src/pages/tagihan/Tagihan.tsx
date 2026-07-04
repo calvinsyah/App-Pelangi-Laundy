@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Lock, Unlock, Check, X, FileText, Printer, Download } from 'lucide-react';
+import { generateKopHTML, openPrintWindow, buildLinenRoomHTML, buildInvoicePelangganHTML } from '../../lib/printUtils';
 
 interface Pelanggan {
   id: number;
@@ -201,6 +202,28 @@ export default function Tagihan() {
     a.click();
   };
 
+  const handleCetakLinenRoom = async () => {
+    const pelData = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!pelData || invoiceData.length === 0) return;
+    setLoading(true);
+    const { data: kopData } = await supabase.from('pengaturan').select('*').single();
+    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' });
+    const html = await buildLinenRoomHTML(pelData, selectedBulan, invoiceData, kopHTML);
+    openPrintWindow(html, `Linen Room - ${pelData.nama}`);
+    setLoading(false);
+  };
+
+  const handleCetakInvoice = async () => {
+    const pelData = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!pelData || invoiceData.length === 0) return;
+    setLoading(true);
+    const { data: kopData } = await supabase.from('pengaturan').select('*').single();
+    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' });
+    const html = await buildInvoicePelangganHTML(pelData, selectedBulan, invoiceData, kopHTML, invoiceNumber);
+    openPrintWindow(html, `Invoice - ${pelData.nama}`);
+    setLoading(false);
+  };
+
   const fmtRp = (val: number) => "Rp " + Math.floor(val).toLocaleString("id-ID");
 
   const pel = pelangganList.find(p => p.nama === selectedPelanggan);
@@ -341,19 +364,28 @@ export default function Tagihan() {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100">Dokumen</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100">Dokumen Invoice</h3>
               <div className="space-y-3">
                 <button
-                  onClick={() => window.print()}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  onClick={handleCetakLinenRoom}
+                  disabled={loading || invoiceData.length === 0}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Printer size={18} /> Cetak Invoice / Kwitansi
+                  <Printer size={18} /> Cetak Linen Room
+                </button>
+                <button
+                  onClick={handleCetakInvoice}
+                  disabled={loading || invoiceData.length === 0}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  <FileText size={18} /> Cetak Invoice
                 </button>
                 <button
                   onClick={handleDownloadExcel}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors mt-2"
+                  disabled={invoiceData.length === 0}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Download size={18} /> Unduh Excel (Linen Room)
+                  <Download size={18} /> Unduh Linen Room (Excel)
                 </button>
               </div>
             </div>
