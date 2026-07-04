@@ -241,9 +241,10 @@ export default function InputNota() {
         setSuccess('Nota berhasil diperbarui!');
         setTimeout(() => navigate('/transaksi/riwayat'), 1500);
       } else {
+        const nota_id = `${formData.tanggal.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`;
         const { error: notaErr } = await supabase
           .from('nota')
-          .insert([notaData]);
+          .insert([{ ...notaData, nota_id }]);
         if (notaErr) throw notaErr;
         setSuccess('Nota berhasil disimpan!');
         setFormData({ ...formData, berat_kg: 0 });
