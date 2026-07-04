@@ -1,0 +1,1218 @@
+<!doctype html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pelangi Laundry - v25 Enhanced Progressive</title>
+  <meta name="theme-color" content="#1e3a5f" />
+  <!-- Menghubungkan file CSS eksternal -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- Container untuk menampilkan notifikasi toast -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Custom Confirm Modal -->
+  <div class="modal" id="customConfirmModal">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+      <h3 id="customConfirmMessage" style="margin-bottom: 20px;">Konfirmasi</h3>
+      <div style="display: flex; gap: 10px; justify-content: center;">
+        <button class="btn btn-secondary" onclick="customConfirmRespond(false)">Batal</button>
+        <button class="btn btn-danger" onclick="customConfirmRespond(true)">Ya, Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== HALAMAN LOGIN ==================== -->
+  <div id="loginPage">
+    <div class="login-box">
+      <div class="login-logo">🌈</div>
+      <h2>Pelangi Laundry</h2>
+      <p>Sistem Manajemen Laundry v24</p>
+      <div id="loginError" style="
+            color: var(--danger);
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: none;
+          ">
+        ⚠️ Username atau Password salah!
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="username" placeholder="admin / user"
+          onkeydown="if (event.key === 'Enter') prosesLogin();" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="••••••"
+          onkeydown="if (event.key === 'Enter') prosesLogin();" />
+      </div>
+      <button class="btn btn-primary btn-block" onclick="prosesLogin()">
+        Masuk →
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== APLIKASI UTAMA ==================== -->
+  <div id="appContent" style="display: none">
+    <!-- Header -->
+    <header class="no-print">
+      <h1>🌈 PELANGI LAUNDRY</h1>
+      <div class="header-right">
+        <span class="user-badge" id="roleBadge">-</span>
+        <button class="btn-sm btn-secondary" onclick="logout()">Logout</button>
+      </div>
+    </header>
+
+    <div class="container">
+      <!-- Navigasi Kategori & Subtab — FIX: structure dengan aria, sticky berurutan -->
+      <div class="nav-tabs no-print" id="navigationTabs">
+        <!-- Kategori Utama (Level 1) -->
+        <nav class="nav-categories" id="navCategories" role="tablist" aria-label="Kategori utama">
+          <button class="cat-btn active" data-cat="transaksi" role="tab" aria-selected="true" aria-controls="navSubtabs" onclick="switchCategory('transaksi')">
+            📊 Transaksi
+          </button>
+          <button class="cat-btn admin-only" data-cat="tagihan" role="tab" aria-selected="false" aria-controls="navSubtabs" onclick="switchCategory('tagihan')">
+            🧾 Tagihan
+          </button>
+          <button class="cat-btn admin-only" data-cat="keuangan" role="tab" aria-selected="false" aria-controls="navSubtabs" onclick="switchCategory('keuangan')">
+            💰 Keuangan
+          </button>
+          <button class="cat-btn admin-only" data-cat="sistem" role="tab" aria-selected="false" aria-controls="navSubtabs" onclick="switchCategory('sistem')">
+            ⚙️ Sistem
+          </button>
+        </nav>
+        <!-- Subtab (Level 2) -->
+        <nav class="nav-subtabs" id="navSubtabs" role="tablist" aria-label="Sub-tab">
+          <span class="group-label">TRANSAKSI:</span>
+          <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-nota" onclick="switchTab('tab-nota')">
+            📝 Input Nota
+          </button>
+          <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-rekap" onclick="switchTab('tab-rekap')">
+            🔍 Riwayat Nota
+          </button>
+        </nav>
+      </div>
+
+      <!-- ==================== TAB: INPUT NOTA ==================== -->
+      <div id="tab-nota" class="tab-content">
+        <div class="card">
+          <div class="card-title">📝 Input Transaksi Baru</div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 1">
+              <label>Tanggal</label><input type="date" id="notaTanggal" />
+            </div>
+            <div class="form-group" style="flex: 2">
+              <label>Pelanggan</label><select id="pelangganSelect" onchange="cekTipePelangganInput()"></select>
+            </div>
+            <div class="form-group" style="flex: 2">
+              <label>Jenis Nota</label><select id="jenisNota" onchange="renderFormLinenInput()"></select>
+            </div>
+          </div>
+          <!-- Form untuk Hotel -->
+          <div id="formHotel">
+            <label style="margin-bottom: 8px; font-weight: 700">Kuantitas Cucian Linen (Pcs)</label>
+            <div class="table-wrap">
+              <table class="linen-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Nama Linen</th>
+                    <th>Harga Satuan</th>
+                    <th style="text-align: center">Jumlah</th>
+                  </tr>
+                </thead>
+                <tbody id="tabelLinenInput"></tbody>
+              </table>
+            </div>
+          </div>
+          <!-- Form untuk Rumah Sakit -->
+          <div id="formRS" style="display: none">
+            <div class="form-group" style="max-width: 320px">
+              <label>Berat Cucian RS (KG)</label>
+              <input type="number" id="beratRS" placeholder="0.0" step="0.1" min="0" />
+              <p id="infoTarifRS" style="
+                    font-size: 13px;
+                    color: var(--primary);
+                    font-weight: 600;
+                    margin-top: 6px;
+                  "></p>
+            </div>
+          </div>
+          <div class="sticky-save-bar">
+            <button class="btn btn-success btn-block" onclick="simpanNotaSistem()" id="btnSimpanNota">
+              ✓ Simpan Transaksi
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== TAB: RIWAYAT NOTA ==================== -->
+      <div id="tab-rekap" class="tab-content" style="display: none">
+        <div class="card">
+          <div class="card-title">🔍 Cari Nota</div>
+          <!-- FIX: hapus tombol "Semua" (redundan). Tombol "Cari" sudah handle:
+               - input kosong → tampilkan semua
+               - input terisi → filter berdasarkan tanggal + pelanggan
+               Input Pelanggan tetap oninput untuk real-time search. -->
+          <div class="flex-row">
+            <div class="form-group" style="flex: 1">
+              <label>Tanggal</label>
+              <input type="date" id="cariTanggal" onchange="cariNotaSistem()" />
+            </div>
+            <div class="form-group" style="flex: 2">
+              <label>Pelanggan</label>
+              <div class="search-box">
+                <input type="text" id="cariPelanggan" placeholder="Ketik nama pelanggan... (kosongkan = tampilkan semua)" oninput="onCariPelangganInput()" />
+                <button type="button" class="search-clear" id="cariPelangganClear" onclick="clearCariPelanggan()" title="Hapus pencarian" aria-label="Hapus pencarian">×</button>
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="cariNotaSistem()">🔍 Cari</button>
+          </div>
+          <div class="table-wrap">
+            <table class="linen-table linen-table--cards">
+              <thead>
+                <tr>
+                  <th>No Nota</th>
+                  <th>Tanggal</th>
+                  <th>Pelanggan</th>
+                  <th>Jenis</th>
+                  <th>Total</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="tabelRiwayatNota"></tbody>
+            </table>
+          </div>
+          <p style="font-size: 12px; color: var(--text-light); margin-top: 4px; text-align: right;">
+            💡 Kosongkan filter lalu klik "Cari" untuk menampilkan semua nota
+          </p>
+        </div>
+      </div>
+
+      <!-- ==================== TAB: INVOICE ==================== -->
+      <div id="tab-invoice" class="tab-content" style="display: none">
+        <div class="card no-print">
+          <div class="card-title">🧾 Invoice Tagihan Bulanan</div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 2">
+              <label>Pelanggan</label><select id="invoicePelangganSelect"></select>
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Bulan</label><input type="month" id="invoiceBulanSelect" />
+            </div>
+            <button class="btn btn-primary" onclick="hitungDanAmbilInvoice()">
+              🖲️ Hitung Invoice
+            </button>
+          </div>
+        </div>
+        <div class="card no-print" id="invoiceListCard" style="display: none">
+          <div class="card-title">📋 Daftar Nota Periode Ini</div>
+          <div class="table-wrap">
+            <table class="linen-table">
+              <thead>
+                <tr>
+                  <th>No Nota</th>
+                  <th>Tanggal</th>
+                  <th>Layanan</th>
+                  <th>Total</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="invoiceTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" id="invoiceResultCard" style="display: none">
+          <div class="no-print" style="
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-bottom: 16px;
+              ">
+            <div class="toggle-section" style="flex: 1">
+              <span>🔒 Kunci Invoice:
+                <span id="lockStatusBadge" class="badge-status status-unlocked">UNLOCKED</span></span>
+              <button class="btn-sm btn-primary" onclick="toggleLockInvoice()">
+                🔄 Ubah Kunci
+              </button>
+            </div>
+            <div class="toggle-section" style="flex: 1">
+              <span>💳 Status:
+                <span id="statusCurrentBadge" class="badge-status status-unpaid">BELUM DIBAYAR</span></span>
+              <button class="btn-sm btn-warning" onclick="toggleStatusPembayaran()">
+                🔄 Ubah Status
+              </button>
+            </div>
+          </div>
+          <div id="printMonthlyInvoiceArea"></div>
+          <div class="btn-row justify-end no-print" style="margin-top: 16px">
+            <button class="btn btn-success btn-sm" onclick="cetakInvoice()">
+              🖨️ Cetak Linen Room
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="downloadInvoice()">
+              ⬇️ Download LR
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="downloadLinenRoomExcel()">
+              📥 Excel (.csv)
+            </button>
+            <button class="btn btn-success btn-sm" onclick="cetakInvoicePelanggan()">
+              🧾 Cetak Invoice
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== TAB: KUITANSI ==================== -->
+      <div id="tab-kuitansi" class="tab-content" style="display: none">
+        <div class="card no-print">
+          <div class="card-title">📄 Cetak Kuitansi</div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 2">
+              <label>Pelanggan</label><select id="kuitansiPelangganSelect"></select>
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Bulan</label><input type="month" id="kuitansiBulanSelect" />
+            </div>
+            <button class="btn btn-success" onclick="generateKuitansi()">
+              🖨️ Cetak
+            </button>
+            <button class="btn btn-primary" onclick="downloadKuitansi()">
+              ⬇️ Download
+            </button>
+          </div>
+        </div>
+        <div id="printKuitansiArea"></div>
+      </div>
+
+      <!-- ==================== TAB: KEUANGAN ==================== -->
+      <div id="tab-omset" class="tab-content" style="display: none">
+        <div class="finance-grid">
+          <div class="finance-box bg-income">
+            <p>Penjualan Bersih</p>
+            <h3 id="boxTotalOmset">Rp 0</h3>
+          </div>
+          <div class="finance-box bg-expense">
+            <p>Total HPP</p>
+            <h3 id="boxTotalHPP">Rp 0</h3>
+          </div>
+          <div class="finance-box" style="background: linear-gradient(135deg, #f97316, #ea580c)">
+            <p>Biaya Adm & Umum</p>
+            <h3 id="boxTotalAdm">Rp 0</h3>
+          </div>
+          <div class="finance-box bg-profit">
+            <p>Laba Bersih</p>
+            <h3 id="boxLabaBersih">Rp 0</h3>
+          </div>
+          <div class="finance-box" style="background: linear-gradient(135deg, #eab308, #ca8a04)">
+            <p>Piutang Usaha</p>
+            <h3 id="boxPiutang">Rp 0</h3>
+          </div>
+          <div class="finance-box" style="background: linear-gradient(135deg, #b91c1c, #991b1b)">
+            <p>Utang Usaha</p>
+            <h3 id="boxTotalUtang">Rp 0</h3>
+          </div>
+          <div class="finance-box" style="background: linear-gradient(135deg, #0d9488, #0f766e)">
+            <p>Kas / Bank</p>
+            <h3 id="boxKas">Rp 0</h3>
+          </div>
+          <div class="finance-box" style="background: linear-gradient(135deg, #7c3aed, #6d28d9)">
+            <p>Modal Bersih</p>
+            <h3 id="boxModal">Rp 0</h3>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🔍 Filter Pengeluaran</div>
+          <!-- SMART FILTER: auto-filter on change + inline clear (×), hapus tombol Filter & Reset -->
+          <div class="flex-row">
+            <div class="form-group">
+              <label>Dari</label>
+              <div class="search-box">
+                <input type="date" id="filterExpMulai" onchange="onFilterExpInput()" />
+                <button type="button" class="search-clear" id="filterExpMulaiClear" onclick="clearFilterExpField('mulai')" title="Hapus tanggal dari" aria-label="Hapus tanggal dari">×</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Sampai</label>
+              <div class="search-box">
+                <input type="date" id="filterExpSelesai" onchange="onFilterExpInput()" />
+                <button type="button" class="search-clear" id="filterExpSelesaiClear" onclick="clearFilterExpField('selesai')" title="Hapus tanggal sampai" aria-label="Hapus tanggal sampai">×</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Kategori</label>
+              <div class="search-box">
+                <select id="filterExpKat" onchange="onFilterExpInput()">
+                  <option value="">Semua Kategori</option>
+                  <option>GAS</option>
+                  <option>AIR</option>
+                  <option>LISTRIK</option>
+                  <option>LAIN</option>
+                </select>
+                <button type="button" class="search-clear" id="filterExpKatClear" onclick="clearFilterExpField('kat')" title="Reset kategori" aria-label="Reset kategori">×</button>
+              </div>
+            </div>
+          </div>
+          <p style="font-size: 12px; color: var(--text-light); margin-top: 4px;">
+            💡 Filter aktif otomatis saat diubah. Kosongkan semua untuk menampilkan seluruh pengeluaran.
+          </p>
+        </div>
+        <div class="card" style="border-left: 4px solid var(--danger)">
+          <div class="card-title" style="color: var(--danger)">
+            💸 Catat Pengeluaran Baru
+          </div>
+          <div class="flex-row">
+            <div class="form-group">
+              <label>Tanggal</label><input type="date" id="expTanggal" />
+            </div>
+            <div class="form-group">
+              <label>Kategori</label>
+              <select id="expKategori" onchange="toggleCustomExpenseInput()">
+                <option>GAS</option>
+                <option>AIR</option>
+                <option>LISTRIK 1</option>
+                <option>LISTRIK 2</option>
+                <option>CHEMICAL</option>
+                <option>BBM</option>
+                <option>PLASTIK</option>
+                <option>PPH PS 23</option>
+                <option>GAJI BORONGAN</option>
+                <option>GAJI TETAP</option>
+                <option>MAKAN</option>
+                <option>PERAWATAN MESIN</option>
+                <option>IURAN SAMPAH</option>
+                <option>IURAN RT</option>
+                <option>LAIN-LAIN</option>
+              </select>
+            </div>
+            <div class="form-group" id="groupCustomExpense" style="display: none">
+              <label>Nama Biaya</label><input type="text" id="expKategoriCustom" />
+            </div>
+            <div class="form-group">
+              <label>Nominal (Rp)</label>
+              <input type="text" id="expNominal" oninput="formatCurrencyInput(this)" />
+            </div>
+            <!-- Checkbox Sudah Dibayar -->
+            <div class="form-group" style="
+                  flex: 0 0 auto;
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                ">
+              <input type="checkbox" id="expLunas" checked style="width: auto" />
+              <label for="expLunas" style="margin: 0; white-space: nowrap">Sudah Dibayar</label>
+            </div>
+            <button class="btn btn-success" onclick="simpanBiayaOperasional()">
+              ✓ Simpan
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">📜 Riwayat Pengeluaran</div>
+          <div class="table-wrap">
+          <table class="linen-table linen-table--cards">
+            <thead>
+              <tr>
+                <th>Tanggal</th>
+                <th>Kategori</th>
+                <th>Nominal</th>
+                <th>Status</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tabelRiwayatPengeluaran"></tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB LAPORAN -->
+      <div id="tab-laporan" class="tab-content" style="display: none">
+        <div class="card no-print">
+          <div class="card-title">📋 Laporan Keuangan</div>
+          <p>
+            Lihat dan cetak laporan laba rugi serta neraca sesuai periode yang
+            dipilih di Dashboard Keuangan.
+          </p>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="tampilkanLaporan()">
+              👁️ View Laporan
+            </button>
+            <button class="btn btn-primary" onclick="cetakLaporan()">
+              🖨️ Download PDF
+            </button>
+          </div>
+        </div>
+        <div id="laporanContainer"></div>
+      </div>
+
+      <!-- ==================== TAB: UTANG USAHA ==================== -->
+      <div id="tab-utang" class="tab-content" style="display: none">
+        <div class="card">
+          <div class="card-title">📉 Catat Utang Usaha Baru</div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 2">
+              <label>Nama Hutang</label>
+              <input type="text" id="utangNama" placeholder="Misal: Beli deterjen" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Tenor (Dari)</label>
+              <input type="month" id="utangDari" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Tenor (Sampai)</label>
+              <input type="month" id="utangSampai" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Nominal Cicilan (Rp)</label>
+              <input type="text" id="utangCicilan" oninput="formatCurrencyInput(this)" placeholder="500.000" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Keterangan</label>
+            <input type="text" id="utangKeterangan" placeholder="Tambahan..." />
+          </div>
+          <button class="btn btn-success" onclick="simpanUtang()">
+            ✓ Simpan Utang
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📋 Daftar Utang Aktif</div>
+          <!-- SMART SEARCH: ganti tombol "Semua" dengan input + clear (×) -->
+          <div class="search-box" style="margin-bottom: 12px">
+            <input type="text" id="cariUtang" placeholder="Cari nama utang / keterangan... (kosongkan = tampilkan semua)" oninput="onCariUtangInput()" />
+            <button type="button" class="search-clear" id="cariUtangClear" onclick="clearCariUtang()" title="Hapus pencarian" aria-label="Hapus pencarian">×</button>
+          </div>
+          <div class="table-wrap">
+          <table class="linen-table linen-table--cards">
+            <thead>
+              <tr>
+                <th>Nama</th>
+                <th>Periode</th>
+                <th>Cicilan/Bulan</th>
+                <th>Sisa Bulan</th>
+                <th>Sisa Total</th>
+                <th>Status</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tabelDaftarUtang"></tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== TAB: MASTER DATA ==================== -->
+      <div id="tab-master" class="tab-content" style="display: none">
+        <div class="master-header">
+          <h2>🛠️ Master Data</h2>
+          <div class="actions">
+            <button class="btn-sm btn-primary" onclick="bukaModalMasterLinen()">
+              👔 Linen
+            </button>
+            <button class="btn-sm btn-secondary" onclick="bukaModalMasterJenisNota()">
+              ⚡ Jenis Nota
+            </button>
+            <button
+              id="btnAturLinenJenisNota"
+              class="btn-sm btn-info admin-only"
+              onclick="bukaModalAturLinen()"
+              style="display: none"
+              title="Atur linen yang tersedia untuk setiap jenis nota (Admin only)"
+            >
+              📋 Atur Linen
+            </button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">🏥 Daftar Pelanggan</div>
+          <!-- SMART SEARCH: ganti tombol "Semua" dengan input + clear (×) -->
+          <div class="search-box" style="margin-bottom: 12px">
+            <input type="text" id="cariPelangganMaster" placeholder="Cari nama / kode pelanggan... (kosongkan = tampilkan semua)" oninput="onCariPelangganMasterInput()" />
+            <button type="button" class="search-clear" id="cariPelangganMasterClear" onclick="clearCariPelangganMaster()" title="Hapus pencarian" aria-label="Hapus pencarian">×</button>
+          </div>
+          <div id="daftarPelangganContainer"></div>
+          <div style="
+                margin-top: 24px;
+                border-top: 1px solid var(--border);
+                padding-top: 20px;
+              ">
+            <h4 style="margin-bottom: 12px; color: var(--primary)">
+              ➕ Tambah Pelanggan Baru
+            </h4>
+            <div class="flex-row" style="align-items: flex-end">
+              <div class="form-group" style="flex: 2">
+                <label>Nama Instansi</label><input type="text" id="newPelangganName" placeholder="Nama lengkap"
+                  oninput="autoIsiKodeBaru()" />
+              </div>
+              <div class="form-group" style="flex: 1">
+                <label>Kode Pelanggan
+                  <small style="font-weight: normal; color: var(--text-light)">(untuk nomor
+                    invoice)</small></label><input type="text" id="newPelangganKode" placeholder="Mis. GDS"
+                  style="text-transform: uppercase" maxlength="6" />
+              </div>
+              <div class="form-group" style="flex: 1">
+                <label>Tipe</label><select id="newPelangganType" onchange="toggleFlatRateInput()">
+                  <option value="HOTEL">HOTEL</option>
+                  <option value="RS">RS</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1">
+                <label>Billing</label><select id="newPelangganBilling" onchange="toggleFlatRateInput()">
+                  <option value="REGULER">REGULER</option>
+                  <option value="FLAT">FLAT</option>
+                </select>
+              </div>
+              <div class="form-group" id="groupFlatRate" style="flex: 1; display: none">
+                <label>Flat Rate</label><input type="text" id="newFlatRate" placeholder="0"
+                  oninput="formatCurrencyInput(this)" />
+              </div>
+              <div class="form-group" id="groupTarifRS" style="flex: 1; display: none">
+                <label>Tarif RS/Kg</label><input type="text" id="newTarifRS" placeholder="0"
+                  oninput="formatCurrencyInput(this)" />
+              </div>
+            </div>
+            <div class="flex-row" style="margin-top: 10px">
+              <div class="form-group" style="flex: 2">
+                <label>Alamat</label><input type="text" id="newPelangganAlamat" placeholder="Alamat lengkap" />
+              </div>
+              <div class="form-group" style="flex: 1">
+                <label>Kota</label><input type="text" id="newPelangganKota" placeholder="Kota" />
+              </div>
+              <div class="form-group" style="flex: 0 0 auto">
+                <label>&nbsp;</label><button class="btn btn-success" onclick="tambahPelangganBaru()">
+                  ✓ Tambah
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">👥 Master Karyawan</div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 2">
+              <label>Nama Karyawan</label><input type="text" id="newKaryawanNama" placeholder="Nama lengkap" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Bagian</label><input type="text" id="newKaryawanBagian" placeholder="Cuci / Setrika" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Persentase (%)</label><input type="number" id="newKaryawanPersen" step="0.1" min="0" max="100"
+                placeholder="10" value="10" />
+            </div>
+            <div class="form-group" style="flex: 0 0 auto">
+              <label>&nbsp;</label><button class="btn btn-success" onclick="tambahKaryawan()">
+                ✓ Tambah
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+          <table class="linen-table linen-table--cards">
+            <thead>
+              <tr>
+                <th>Nama</th>
+                <th>Bagian</th>
+                <th>Persentase</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tabelMasterKaryawan"></tbody>
+          </table>
+          </div>
+        </div>
+        <div class="card" style="border-left: 4px solid var(--info)">
+          <div class="card-title" style="color: var(--info)">
+            ⚙️ Pengaturan Sistem
+          </div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 1">
+              <label>Tarif Internal Hotel (Rp/Kg)</label><input type="text" id="settingTarifHotel"
+                oninput="formatCurrencyInput(this)" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Ongkos/Kg untuk Gaji (Rp)</label><input type="text" id="settingOngkosPerKg"
+                oninput="formatCurrencyInput(this)" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Nama Rekening</label><input type="text" id="settingRekeningName" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>No. Rekening</label><input type="text" id="settingRekeningNo" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Bank</label><input type="text" id="settingBank" />
+            </div>
+          </div>
+          <div class="flex-row" style="margin-top: 10px">
+            <div class="form-group" style="flex: 1">
+              <label>Nama Direktur</label><input type="text" id="settingDirektur" value="Bagus Riadi Kurniawan" />
+            </div>
+          </div>
+          <div class="flex-row" style="margin-top: 10px">
+            <div class="form-group" style="flex: 1">
+              <label>Nilai Peralatan (Rp)</label><input type="text" id="settingPeralatan"
+                oninput="formatCurrencyInput(this)" value="0" />
+            </div>
+          </div>
+          <div class="btn-row justify-end">
+            <button class="btn btn-success" onclick="simpanPengaturanGlobal()">
+              💾 Simpan Pengaturan
+            </button>
+          </div>
+        </div>
+        <div class="card" style="border-left: 4px solid var(--success)">
+          <div class="card-title" style="color: var(--success)">
+            📮 Kop Surat untuk Cetak
+          </div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 2">
+              <label>Nama Usaha</label><input type="text" id="kopNama" placeholder="Pelangi Laundry" />
+            </div>
+            <div class="form-group" style="flex: 2">
+              <label>Alamat</label><input type="text" id="kopAlamat" placeholder="Jl. Melati No. 123, Surabaya" />
+            </div>
+          </div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 1">
+              <label>Telepon</label><input type="text" id="kopTelepon" placeholder="0812-3456-7890" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Email</label><input type="text" id="kopEmail" placeholder="pelangi@laundry.com" />
+            </div>
+          </div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 1">
+              <label>Contact Person</label><input type="text" id="kopContact" placeholder="Nama / Jabatan" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Logo Usaha
+              <small style="font-weight: normal">(format PNG/JPG, ukuran bebas, max 2MB)</small></label>
+            <div style="display: flex; align-items: center; gap: 12px">
+              <button type="button" class="btn-sm btn-primary"
+                onclick="document.getElementById('fileLogoInput').click()">
+                📷 Pilih Logo
+              </button>
+              <input type="file" id="fileLogoInput" accept="image/*" style="display: none"
+                onchange="handleLogoUpload(this)" />
+              <span id="logoStatus" style="font-size: 13px; color: var(--text-light)">Belum ada logo</span>
+            </div>
+            <div id="logoPreviewContainer" style="
+                  margin-top: 10px;
+                  display: none;
+                  border: 1px dashed var(--border);
+                  border-radius: 8px;
+                  padding: 8px;
+                  text-align: center;
+                  background: #f9fafb;
+                ">
+              <img id="logoPreview" src="" alt="Preview Logo" style="max-height: 60px; max-width: 100%" />
+            </div>
+          </div>
+          <button class="btn btn-success" onclick="simpanKopSurat()">
+            💾 Simpan Kop Surat
+          </button>
+        </div>
+        <div class="card" style="border-left: 4px solid var(--danger)">
+          <div class="card-title" style="color: var(--danger)">
+            🔧 Maintenance Data
+          </div>
+          <button class="btn btn-danger" onclick="bersihkanNotaRusak()">
+            🧹 Bersihkan Nota Rusak
+          </button>
+        </div>
+      </div>
+
+      <!-- ==================== TAB: ABSENSI ==================== -->
+      <div id="tab-absen" class="tab-content" style="display: none">
+        <div class="card">
+          <div class="card-title">📅 Absensi Harian Karyawan</div>
+          <input type="date" id="absensiTanggal" onchange="renderAbsensiTable()" />
+          <div id="absensiContainer"></div>
+        </div>
+      </div>
+
+      <!-- ==================== TAB: GAJI ==================== -->
+      <div id="tab-gaji" class="tab-content" style="display: none">
+        <div class="card">
+          <div class="card-title">💰 Hitung Gaji Karyawan</div>
+          <div class="flex-row">
+            <div class="form-group" style="flex: 1">
+              <label>Tanggal Mulai</label><input type="date" id="gajiTglMulai" />
+            </div>
+            <div class="form-group" style="flex: 1">
+              <label>Tanggal Selesai</label><input type="date" id="gajiTglSelesai" />
+            </div>
+            <button class="btn btn-primary" onclick="tampilkanListGajiBaru()">
+              📋 Tampilkan
+            </button>
+          </div>
+          <div id="listGajiContainer"></div>
+        </div>
+      </div>
+
+      <!-- ==================== TAB: BACKUP ==================== -->
+      <div id="tab-backup" class="tab-content" style="display: none">
+        <div class="card">
+          <div class="card-title">💾 Backup & Restore Data</div>
+          <p style="margin-bottom: 16px">
+            Kelola data transaksi Anda dengan aman. Pilih aksi sesuai
+            kebutuhan.
+          </p>
+
+          <div style="
+                display: flex;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin-bottom: 10px;
+              ">
+            <button class="btn btn-success" onclick="exportAllData()">
+              📤 Export Semua Data
+            </button>
+            <span style="
+                  font-size: 12px;
+                  color: var(--text-light);
+                  flex-basis: 100%;
+                ">Unduh seluruh data (transaksi, master, pengaturan) dalam satu
+              file .json untuk cadangan.</span>
+          </div>
+          <div style="
+                display: flex;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin-bottom: 10px;
+              ">
+            <button class="btn btn-secondary" onclick="importDataViaFile()">
+              📥 Import Data
+            </button>
+            <span style="
+                  font-size: 12px;
+                  color: var(--text-light);
+                  flex-basis: 100%;
+                ">Pulihkan data dari file backup .json yang pernah Anda
+              ekspor.</span>
+          </div>
+          <div style="
+                display: flex;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin-bottom: 10px;
+              ">
+            <button class="btn btn-danger" onclick="backupDanBersihkan()">
+              🧹 Backup & Bersihkan Semua
+            </button>
+            <span style="
+                  font-size: 12px;
+                  color: var(--text-light);
+                  flex-basis: 100%;
+                ">Backup seluruh data lalu hapus semua transaksi, pengeluaran,
+              absensi, dan gaji. Data master tetap aman.</span>
+          </div>
+          <div style="
+                display: flex;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin-bottom: 10px;
+              ">
+            <button class="btn btn-primary" onclick="backupSemuaBulanBelum()">
+              📅 Backup Semua Bulan Belum
+            </button>
+            <span style="
+                  font-size: 12px;
+                  color: var(--text-light);
+                  flex-basis: 100%;
+                ">Hanya backup & hapus transaksi dari bulan-bulan yang belum
+              pernah di-backup. Data bulan lainnya tidak terpengaruh.</span>
+          </div>
+
+          <div id="backupStatusArea" style="margin-top: 20px"></div>
+          <input type="file" id="fileImportInput" accept=".json" style="display: none"
+            onchange="handleFileImport(this)" />
+        </div>
+      </div>
+    </div>
+    <!-- akhir .container -->
+
+    <!-- ==================== FAB (Floating Action Button) ==================== -->
+    <!-- FIX: Primary CTA floating, accessible thumb-reach on mobile.
+         Diisi dinamis oleh setupFAB(tabId) di script.js.
+         Di-hide di desktop via CSS @media (min-width: 1025px). -->
+    <button class="fab no-print" id="globalFab" aria-label="Aksi utama" style="display:none">
+      <span id="fabIcon">＋</span>
+      <span id="fabLabel" class="fab-label">Aksi</span>
+    </button>
+  </div>
+  <!-- akhir #appContent -->
+
+  <!-- ==================== MODAL-MODAL ==================== -->
+  <!-- Detail Nota -->
+  <div id="detailModal" class="modal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="tutupModalDetail()">×</button>
+      <h3 id="modalNotaTitle">Detail Nota</h3>
+      <div id="modalNotaMeta" style="margin-bottom: 16px; font-size: 14px; color: var(--text-light)"></div>
+      <div class="table-wrap">
+      <table class="linen-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody id="modalLinenBody"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Nota -->
+  <div id="editLinenModal" class="modal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="tutupModalEdit()">×</button>
+      <h3>Edit Transaksi Nota</h3>
+      <input type="hidden" id="editNotaTargetId" />
+      <div class="form-group">
+        <label>Jenis Nota</label><select id="editNotaJenisSelect" onchange="onEditJenisChange()"></select>
+      </div>
+      <div id="editLinenModalBody" style="margin-bottom: 16px"></div>
+      <div style="
+            text-align: right;
+            font-weight: 700;
+            margin-bottom: 12px;
+            font-size: 16px;
+          " id="editNotaTotalPreview">
+        Total: Rp 0
+      </div>
+      <button class="btn btn-success btn-block" onclick="simpanPerubahanQtyNota()">
+        ✓ Simpan Perubahan
+      </button>
+    </div>
+  </div>
+
+  <!-- Edit Biaya -->
+  <div id="editBiayaModal" class="modal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="tutupModalEditBiaya()">×</button>
+      <h3>Edit Pengeluaran</h3>
+      <input type="hidden" id="editBiayaId" />
+      <div class="form-group">
+        <label>Tanggal</label><input type="date" id="editBiayaTanggal" />
+      </div>
+      <div class="form-group">
+        <label>Kategori</label>
+        <select id="editBiayaKategori" onchange="toggleEditCustomBiaya()">
+          <option>GAS</option>
+          <option>AIR</option>
+          <option>LISTRIK 1</option>
+          <option>LISTRIK 2</option>
+          <option>LAIN-LAIN</option>
+        </select>
+      </div>
+      <div class="form-group" id="editGroupCustomBiaya" style="display: none">
+        <label>Deskripsi Custom</label><input type="text" id="editBiayaCustomText" />
+      </div>
+      <div class="form-group">
+        <label>Nominal (Rp)</label><input type="text" id="editBiayaNominal" oninput="formatCurrencyInput(this)" />
+      </div>
+      <button class="btn btn-success btn-block" onclick="simpanEditBiaya()">
+        ✓ Simpan
+      </button>
+    </div>
+  </div>
+
+  <!-- Edit Gaji -->
+  <div id="editGajiModal" class="modal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="tutupEditGaji()">×</button>
+      <h3>Edit Insentif / Lembur / Potongan</h3>
+      <input type="hidden" id="editGajiId" />
+      <div class="form-group">
+        <label>Insentif (Rp)</label><input type="text" id="editGajiInsentif" oninput="formatCurrencyInput(this)" />
+      </div>
+      <div class="form-group">
+        <label>Lembur (Rp)</label><input type="text" id="editGajiLembur" oninput="formatCurrencyInput(this)" />
+      </div>
+      <div class="form-group">
+        <label>Potongan / Kas Bon (Rp)</label><input type="text" id="editGajiPotongan"
+          oninput="formatCurrencyInput(this)" />
+      </div>
+      <button class="btn btn-success btn-block" onclick="simpanEditGajiBaru()">
+        ✓ Simpan
+      </button>
+    </div>
+  </div>
+
+  <!-- Edit Karyawan -->
+  <div id="editKaryawanModal" class="modal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="tutupEditKaryawanModal()">
+        ×
+      </button>
+      <h3>Edit Data Karyawan</h3>
+      <input type="hidden" id="editKaryawanId" />
+      <div class="form-group">
+        <label>Nama</label><input type="text" id="editKaryawanNama" />
+      </div>
+      <div class="form-group">
+        <label>Bagian</label><input type="text" id="editKaryawanBagian" />
+      </div>
+      <div class="form-group">
+        <label>Persentase (%)</label><input type="number" id="editKaryawanPersen" step="0.1" min="0" max="100" />
+      </div>
+      <button class="btn btn-success btn-block" onclick="updateKaryawanFromModal()">
+        ✓ Simpan
+      </button>
+    </div>
+  </div>
+
+  <!-- Master Linen -->
+  <div id="modalMasterLinen" class="modal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="tutupModal('modalMasterLinen')">
+        ×
+      </button>
+      <h3>👔 Master Linen</h3>
+      <div class="flex-row" style="align-items: flex-end">
+        <div class="form-group" style="flex: 2">
+          <label>Nama Linen Baru</label><input type="text" id="newLinenName" placeholder="Misal: Sheet King" />
+        </div>
+        <div class="form-group" style="flex: 0 0 auto">
+          <label>&nbsp;</label><button class="btn btn-success" onclick="tambahLinen()">
+            ✓ Tambah
+          </button>
+        </div>
+      </div>
+      <div class="table-wrap">
+      <table class="linen-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Nama Linen</th>
+            <th style="text-align: center">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="tabelMasterLinen"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Master Jenis Nota -->
+  <div id="modalMasterJenisNota" class="modal">
+    <div class="modal-content">
+      <button class="close-modal" onclick="tutupModal('modalMasterJenisNota')">
+        ×
+      </button>
+      <h3>⚡ Master Jenis Nota</h3>
+      <div class="flex-row" style="align-items: flex-end">
+        <div class="form-group" style="flex: 2">
+          <label>Nama Layanan</label><input type="text" id="newJenisNotaName" placeholder="EXPRESS" />
+        </div>
+        <div class="form-group" style="flex: 1">
+          <label>Multiplier</label>
+          <select id="newJenisNotaMultiplier">
+            <option value="1">1x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2">2x</option>
+            <option value="2.5">2.5x</option>
+            <option value="3">3x</option>
+            <option value="4">4x</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1">
+          <label>Tersedia</label>
+          <select id="newJenisNotaFor">
+            <option value="both">Flat+Reg</option>
+            <option value="flat">Flat</option>
+            <option value="reguler">Reguler</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex: 0 0 auto">
+          <label>&nbsp;</label><button class="btn btn-success" onclick="addMasterJenisNota()">
+            ✓ Tambah
+          </button>
+        </div>
+      </div>
+      <div class="table-wrap">
+      <table class="linen-table">
+        <thead>
+          <tr>
+            <th>Jenis</th>
+            <th>Mult.</th>
+            <th>Untuk</th>
+            <th style="text-align: center">Aksi</th>
+          </tr>
+        </thead>
+        <tbody id="tabelMasterJenisNota"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Atur Linen per Jenis Nota -->
+  <div id="modalAturLinenJenisNota" class="modal">
+    <div class="modal-content" style="max-width: 720px">
+      <button class="close-modal" onclick="tutupModal('modalAturLinenJenisNota')">×</button>
+      <h3>📋 Atur Linen per Jenis Nota</h3>
+
+      <div class="form-group" style="margin-bottom: 16px">
+        <label><strong>Pilih Jenis Nota</strong></label>
+        <select
+          id="aturLinenJenisSelect"
+          onchange="renderCheckboxLinen()"
+          style="padding: 8px 10px; font-size: 14px"
+        >
+          <option value="">-- Pilih jenis nota --</option>
+        </select>
+      </div>
+
+      <div
+        id="aturLinenInfo"
+        style="
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          border-radius: 6px;
+          padding: 10px 14px;
+          margin-bottom: 12px;
+          font-size: 13px;
+          color: #1e3a5f;
+          display: none;
+        "
+      >
+        ℹ️ Centang linen yang ingin ditampilkan untuk jenis nota ini. Jika
+        kosong, tidak ada linen yang muncul di Input Nota.
+      </div>
+
+      <div
+        id="aturLinenEmptyState"
+        style="
+          text-align: center;
+          padding: 30px;
+          color: var(--text-light);
+          font-size: 14px;
+          display: none;
+        "
+      >
+        Belum ada master linen. Tambahkan linen via tombol 👔 Linen terlebih
+        dahulu.
+      </div>
+
+      <div id="aturLinenCheckboxList" class="atur-linen-grid"></div>
+
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: 18px;
+          padding-top: 14px;
+          border-top: 1px solid var(--border);
+        "
+      >
+        <div id="aturLinenCounter" style="font-size: 13px; color: var(--text-light)">
+          0 dari 0 linen dipilih
+        </div>
+        <div style="display: flex; gap: 8px">
+          <button class="btn btn-secondary" onclick="tutupModal('modalAturLinenJenisNota')">
+            Batal
+          </button>
+          <button
+            class="btn btn-success"
+            onclick="simpanAturLinen()"
+            id="btnSimpanAturLinen"
+          >
+            💾 Simpan
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Pelanggan -->
+  <div id="modalDetailPelanggan" class="modal">
+    <div class="modal-content" style="max-width: 750px">
+      <button class="close-modal" onclick="tutupModal('modalDetailPelanggan')">
+        ×
+      </button>
+      <h3>✏️ Detail Pelanggan</h3>
+      <input type="hidden" id="editPelangganId" />
+      <div class="flex-row">
+        <div class="form-group" style="flex: 2">
+          <label>Nama Instansi</label><input type="text" id="editPelangganName" />
+        </div>
+        <div class="form-group" style="flex: 1">
+          <label>Kode Pelanggan</label><input type="text" id="editPelangganKode" style="text-transform: uppercase"
+            maxlength="6" />
+        </div>
+        <div class="form-group" style="flex: 1">
+          <label>Tipe</label><select id="editPelangganType" onchange="handleEditTipeChange()">
+            <option value="HOTEL">HOTEL</option>
+            <option value="RS">RS</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex-row">
+        <div class="form-group" style="flex: 1">
+          <label>Billing</label><select id="editPelangganBilling">
+            <option value="REGULER">REGULER</option>
+            <option value="FLAT">FLAT</option>
+          </select>
+        </div>
+        <div class="form-group" id="editGroupFlat" style="flex: 1; display: none">
+          <label>Flat Rate</label><input type="text" id="editFlatRate" oninput="formatCurrencyInput(this)" />
+        </div>
+        <div class="form-group" id="editGroupTarif" style="flex: 1; display: none">
+          <label>Tarif RS/Kg</label><input type="text" id="editTarifRS" oninput="formatCurrencyInput(this)" />
+        </div>
+      </div>
+      <div class="flex-row">
+        <div class="form-group" style="flex: 2">
+          <label>Alamat</label><input type="text" id="editPelangganAlamat" />
+        </div>
+        <div class="form-group" style="flex: 1">
+          <label>Kota</label><input type="text" id="editPelangganKota" />
+        </div>
+      </div>
+      <div class="toggle-section" style="background: #fffbeb; border-color: #fde68a">
+        <div style="flex: 1">
+          <label style="font-size: 13px">No. Invoice Berikutnya (Tahun ini)</label>
+          <input type="number" id="editPelangganCounter" min="0" placeholder="0" style="padding: 7px 10px" />
+          <small style="color: var(--text-light); font-size: 12px">Set angka terakhir dari invoice fisik agar nomor
+            nyambung.
+            Kosongkan = mulai dari 1.</small>
+        </div>
+      </div>
+      <h4 style="margin: 16px 0">💰 Daftar Harga Linen</h4>
+      <div class="table-wrap">
+      <table class="linen-table">
+        <thead>
+          <tr>
+            <th style="width:28px;">Urutan</th>
+            <th style="width:30px;">Pilih</th>
+            <th>Linen</th>
+            <th>Harga (Rp)</th>
+          </tr>
+        </thead>
+        <tbody id="tabelHargaLinen"></tbody>
+      </table>
+      </div>
+      <button class="btn btn-success btn-block" onclick="simpanDetailPelanggan()">
+        💾 Simpan Pelanggan & Harga
+      </button>
+    </div>
+  </div>
+
+  <!-- Menghubungkan file JavaScript eksternal -->
+  <!-- sebelum penutup </body> -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabaseClient.js"></script>
+  <script src="script.js" defer></script>
+</body>
+
+</html>
