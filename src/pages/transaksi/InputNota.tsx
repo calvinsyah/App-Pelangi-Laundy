@@ -94,7 +94,8 @@ export default function InputNota() {
           pelanggan_id: formData.pelanggan_id,
           jenis_nota_id: formData.jenis_nota_id,
           berat_kg: isFlat ? formData.berat_kg : null,
-          status_bayar: 'Belum'
+          status_bayar: 'Belum',
+          items: isFlat ? null : items
         }])
         .select()
         .single();
