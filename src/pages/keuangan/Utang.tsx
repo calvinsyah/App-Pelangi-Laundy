@@ -4,6 +4,7 @@ import { Plus, Edit2, Trash2, Search, Check, DollarSign } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { fmtRp, formatCurrencyInput, parseCurrencyValue } from '../../lib/utils';
+import { CurrencyInput } from '../../components/CurrencyInput';
 
 interface Utang {
   id: number;
@@ -30,7 +31,7 @@ export default function Utang() {
     nama: '',
     dari: '',
     sampai: '',
-    cicilan: '',
+    cicilan: 0,
     keterangan: '',
     sisa_bulan: 0,
     status: 'AKTIF'
@@ -75,13 +76,12 @@ export default function Utang() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const parsedCicilan = parseCurrencyValue(formData.cicilan);
     
     const dataToSave = {
       nama: formData.nama,
       dari: formData.dari,
       sampai: formData.sampai,
-      cicilan: parsedCicilan,
+      cicilan: formData.cicilan,
       keterangan: formData.keterangan,
       sisa_bulan: formData.sisa_bulan,
       status: formData.status
@@ -174,7 +174,7 @@ export default function Utang() {
               nama: '',
               dari: '',
               sampai: '',
-              cicilan: '',
+              cicilan: 0,
               keterangan: '',
               sisa_bulan: 0,
               status: 'AKTIF'
@@ -254,7 +254,7 @@ export default function Utang() {
                             nama: u.nama,
                             dari: u.dari,
                             sampai: u.sampai,
-                            cicilan: formatCurrencyInput(u.cicilan),
+                            cicilan: u.cicilan,
                             keterangan: u.keterangan,
                             sisa_bulan: u.sisa_bulan,
                             status: u.status
@@ -318,17 +318,13 @@ export default function Utang() {
                 </div>
               </div>
               <div className="mb-4 relative">
-                <label className="block text-gray-700 text-sm font-bold mb-2">Cicilan / Bulan (Rp)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
-                  <input
-                    type="text"
-                    value={formData.cicilan}
-                    onChange={(e) => setFormData({...formData, cicilan: formatCurrencyInput(e.target.value)})}
-                    className="shadow appearance-none border rounded w-full py-2 pl-10 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
+                <label className="block text-gray-700 text-sm font-bold mb-2">Cicilan / Bulan</label>
+                <CurrencyInput
+                  value={formData.cicilan}
+                  onChange={(val) => setFormData({...formData, cicilan: val})}
+                  className="shadow appearance-none border rounded w-full py-2 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
               </div>
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-bold mb-2">Sisa Tenor (Bulan)</label>

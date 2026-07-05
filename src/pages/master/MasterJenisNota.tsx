@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Plus, Edit2, Trash2, Search, Settings } from 'lucide-react';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface JenisNota {
   id: number;
@@ -21,11 +23,14 @@ export default function MasterJenisNota() {
   const [masterLinen, setMasterLinen] = useState<MasterLinen[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  
+
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ 
-    nama: '', 
+  const [formData, setFormData] = useState({
+    nama: '',
     multiplier: 1,
     berlaku_reguler: true,
     berlaku_flat: true
@@ -42,7 +47,7 @@ export default function MasterJenisNota() {
       supabase.from('jenis_nota').select('*').order('nama', { ascending: true }),
       supabase.from('master_linen').select('*').order('id', { ascending: true })
     ]);
-    
+
     if (jn.data) setJenisNota(jn.data);
     if (ml.data) setMasterLinen(ml.data);
     setLoading(false);
@@ -54,25 +59,43 @@ export default function MasterJenisNota() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!formData.berlaku_reguler && !formData.berlaku_flat) {
+      toast('Centang Salah satu (Reguler atau Flat)', 'error');
+      return;
+    }
+
     if (editId) {
       const { error } = await supabase.from('jenis_nota').update(formData).eq('id', editId);
       if (!error) {
+        toast('Berhasil mengubah jenis nota', 'success');
         setIsModalOpen(false);
         fetchData();
+      } else {
+        toast('Gagal mengubah jenis nota', 'error');
       }
     } else {
       const { error } = await supabase.from('jenis_nota').insert([{ ...formData, linen_config: [] }]);
       if (!error) {
+        toast('Berhasil menambah jenis nota', 'success');
         setIsModalOpen(false);
         fetchData();
+      } else {
+        toast('Gagal menambah jenis nota', 'error');
       }
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Yakin ingin menghapus data ini?')) {
-      await supabase.from('jenis_nota').delete().eq('id', id);
-      fetchData();
+    const ok = await confirm('Yakin ingin menghapus data ini?');
+    if (ok) {
+      const { error } = await supabase.from('jenis_nota').delete().eq('id', id);
+      if (error) {
+        toast('Gagal menghapus data', 'error');
+      } else {
+        toast('Data berhasil dihapus', 'success');
+        fetchData();
+      }
     }
   };
 
@@ -98,21 +121,18 @@ export default function MasterJenisNota() {
   const saveLinenConfig = async () => {
     if (!activeJenisNota) return;
     const configToSave = selectedLinenIds.map((id, index) => ({ id, urutan: index }));
-    
-    const { error } = await supabase
-      .from('jenis_nota')
-      .update({ linen_config: configToSave })
-      .eq('id', activeJenisNota.id);
-      
+
+    const { error } = await supabase.from('jenis_nota').update({ linen_config: configToSave }).eq('id', activeJenisNota.id);
     if (!error) {
+      toast('Konfigurasi linen disimpan', 'success');
       setIsLinenModalOpen(false);
       fetchData();
     } else {
-      alert("Gagal menyimpan konfigurasi linen.");
+      toast('Gagal menyimpan konfigurasi linen', 'error');
     }
   };
 
-  const filteredJenisNota = jenisNota.filter(j => 
+  const filteredJenisNota = jenisNota.filter(j =>
     j.nama.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -173,8 +193,8 @@ export default function MasterJenisNota() {
                       <button
                         onClick={() => {
                           setEditId(j.id);
-                          setFormData({ 
-                            nama: j.nama, 
+                          setFormData({
+                            nama: j.nama,
                             multiplier: j.multiplier,
                             berlaku_reguler: j.berlaku_reguler,
                             berlaku_flat: j.berlaku_flat
@@ -219,7 +239,7 @@ export default function MasterJenisNota() {
                 <input
                   type="text"
                   value={formData.nama}
-                  onChange={(e) => setFormData({...formData, nama: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -228,7 +248,7 @@ export default function MasterJenisNota() {
                 <label className="block text-gray-700 text-sm font-bold mb-2">Multiplier</label>
                 <select
                   value={formData.multiplier}
-                  onChange={(e) => setFormData({...formData, multiplier: parseFloat(e.target.value)})}
+                  onChange={(e) => setFormData({ ...formData, multiplier: parseFloat(e.target.value) })}
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value={1}>1x</option>
@@ -243,7 +263,7 @@ export default function MasterJenisNota() {
                   <input
                     type="checkbox"
                     checked={formData.berlaku_reguler}
-                    onChange={(e) => setFormData({...formData, berlaku_reguler: e.target.checked})}
+                    onChange={(e) => setFormData({ ...formData, berlaku_reguler: e.target.checked })}
                     className="mr-2 leading-tight"
                   />
                   <span className="text-gray-700 text-sm font-bold">Berlaku Reguler</span>
@@ -254,7 +274,7 @@ export default function MasterJenisNota() {
                   <input
                     type="checkbox"
                     checked={formData.berlaku_flat}
-                    onChange={(e) => setFormData({...formData, berlaku_flat: e.target.checked})}
+                    onChange={(e) => setFormData({ ...formData, berlaku_flat: e.target.checked })}
                     className="mr-2 leading-tight"
                   />
                   <span className="text-gray-700 text-sm font-bold">Berlaku Flat</span>
@@ -288,18 +308,18 @@ export default function MasterJenisNota() {
             <p className="text-sm text-gray-500 mb-4">
               Centang linen yang berlaku untuk jenis nota ini. Urutan Anda mencentang akan menjadi urutan tampilannya.
             </p>
-            
+
             <div className="flex-1 overflow-y-auto space-y-2 mb-4 border border-gray-200 rounded-lg p-2">
               {masterLinen.map(ml => {
                 const isSelected = selectedLinenIds.includes(ml.id);
                 const orderIdx = selectedLinenIds.indexOf(ml.id);
                 return (
-                  <label 
+                  <label
                     key={ml.id}
                     className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors border ${isSelected ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-transparent hover:bg-gray-50'}`}
                   >
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="w-5 h-5 text-emerald-600 rounded cursor-pointer"
                       checked={isSelected}
                       onChange={() => toggleLinen(ml.id)}

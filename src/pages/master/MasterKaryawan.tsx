@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Plus, Edit2, Trash2, Search } from 'lucide-react';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
+import { CurrencyInput } from '../../components/CurrencyInput';
+import { fmtRp } from '../../lib/utils';
 
 interface Karyawan {
   id: number;
   nama: string;
   bagian: string;
-  komisi: number;
+  tipe_gaji: string;
+  gaji_pokok: number;
 }
 
 export default function MasterKaryawan() {
@@ -14,9 +19,12 @@ export default function MasterKaryawan() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ nama: '', bagian: '', komisi: 0 });
+  const [formData, setFormData] = useState({ nama: '', bagian: '', tipe_gaji: 'Borongan', gaji_pokok: 0 });
 
   const fetchKaryawan = async () => {
     setLoading(true);
@@ -26,7 +34,7 @@ export default function MasterKaryawan() {
       .order('nama', { ascending: true });
     
     if (error) {
-      console.error('Error fetching karyawan:', error);
+      toast('Error fetching karyawan', 'error');
     } else {
       setKaryawan(data || []);
     }
@@ -39,30 +47,48 @@ export default function MasterKaryawan() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const safeData = {
+      ...formData,
+      gaji_pokok: formData.tipe_gaji === 'Tetap' ? (formData.gaji_pokok || 0) : 0
+    };
+
     if (editId) {
       const { error } = await supabase
         .from('karyawan')
-        .update(formData)
+        .update(safeData)
         .eq('id', editId);
       if (!error) {
+        toast('Berhasil mengubah karyawan', 'success');
         setIsModalOpen(false);
         fetchKaryawan();
+      } else {
+        toast('Gagal mengubah karyawan', 'error');
       }
     } else {
       const { error } = await supabase
         .from('karyawan')
-        .insert([formData]);
+        .insert([safeData]);
       if (!error) {
+        toast('Berhasil menambah karyawan', 'success');
         setIsModalOpen(false);
         fetchKaryawan();
+      } else {
+        console.error(error);
+        toast('Gagal menambah karyawan', 'error');
       }
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Yakin ingin menghapus data ini?')) {
-      await supabase.from('karyawan').delete().eq('id', id);
-      fetchKaryawan();
+    const ok = await confirm('Yakin ingin menghapus data ini?');
+    if (ok) {
+      const { error } = await supabase.from('karyawan').delete().eq('id', id);
+      if (error) {
+        toast('Gagal menghapus data', 'error');
+      } else {
+        toast('Data berhasil dihapus', 'success');
+        fetchKaryawan();
+      }
     }
   };
 
@@ -78,7 +104,7 @@ export default function MasterKaryawan() {
         <button
           onClick={() => {
             setEditId(null);
-            setFormData({ nama: '', bagian: '', komisi: 0 });
+            setFormData({ nama: '', bagian: '', tipe_gaji: 'Borongan', gaji_pokok: 0 });
             setIsModalOpen(true);
           }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
@@ -107,7 +133,7 @@ export default function MasterKaryawan() {
               <tr className="bg-gray-50 border-b border-gray-200 text-gray-600">
                 <th className="p-4 font-medium">Nama Karyawan</th>
                 <th className="p-4 font-medium">Bagian</th>
-                <th className="p-4 font-medium">Persentase Komisi (%)</th>
+                <th className="p-4 font-medium">Tipe Gaji</th>
                 <th className="p-4 font-medium text-right">Aksi</th>
               </tr>
             </thead>
@@ -121,12 +147,16 @@ export default function MasterKaryawan() {
                   <tr key={k.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="p-4 text-gray-800">{k.nama}</td>
                     <td className="p-4 text-gray-800">{k.bagian}</td>
-                    <td className="p-4 text-gray-800">{k.komisi}%</td>
+                    <td className="p-4 text-gray-800">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${k.tipe_gaji === 'Tetap' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                        {k.tipe_gaji || 'Borongan'}
+                      </span>
+                    </td>
                     <td className="p-4 text-right space-x-2">
                       <button
                         onClick={() => {
                           setEditId(k.id);
-                          setFormData({ nama: k.nama, bagian: k.bagian, komisi: k.komisi });
+                          setFormData({ nama: k.nama, bagian: k.bagian, tipe_gaji: k.tipe_gaji || 'Borongan', gaji_pokok: k.gaji_pokok || 0 });
                           setIsModalOpen(true);
                         }}
                         className="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-50 transition-colors"
@@ -173,17 +203,27 @@ export default function MasterKaryawan() {
                   required
                 />
               </div>
-              <div className="mb-6">
-                <label className="block text-gray-700 text-sm font-bold mb-2">Persentase Komisi (%)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.komisi}
-                  onChange={(e) => setFormData({...formData, komisi: parseFloat(e.target.value)})}
+              <div className="mb-4">
+                <label className="block text-gray-700 text-sm font-bold mb-2">Tipe Gaji</label>
+                <select
+                  value={formData.tipe_gaji}
+                  onChange={(e) => setFormData({...formData, tipe_gaji: e.target.value})}
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
+                >
+                  <option value="Borongan">Borongan</option>
+                  <option value="Tetap">Tetap</option>
+                </select>
               </div>
+              {formData.tipe_gaji === 'Tetap' && (
+                <div className="mb-4">
+                  <label className="block text-gray-700 text-sm font-bold mb-2">Gaji Pokok / Tetap (Rp)</label>
+                  <CurrencyInput
+                    value={formData.gaji_pokok}
+                    onChange={(val) => setFormData({...formData, gaji_pokok: val})}
+                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <button
                   type="button"

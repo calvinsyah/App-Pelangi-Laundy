@@ -42,7 +42,11 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         const bulanLalu = d.toISOString().substring(0, 7); // YYYY-MM
         
         // Cek apakah ada data di bulan lalu
-        const { count: countNota } = await supabase.from('nota').select('*', { count: 'exact', head: true }).like('tanggal', `${bulanLalu}%`);
+        const startDate = `${bulanLalu}-01`;
+        const year = parseInt(bulanLalu.split('-')[0]);
+        const month = parseInt(bulanLalu.split('-')[1]);
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        const { count: countNota } = await supabase.from('nota').select('*', { count: 'exact', head: true }).gte('tanggal', startDate).lte('tanggal', endDate);
         
         if (countNota && countNota > 0) {
           // Cek apakah sudah di-backup

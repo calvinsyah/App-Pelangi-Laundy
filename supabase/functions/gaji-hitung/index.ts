@@ -15,7 +15,7 @@ serve(async (req) => {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } }
     )
 
     const payload = await req.json()
@@ -55,13 +55,18 @@ serve(async (req) => {
       const pel = pelangganList?.find((p) => p.id === nota.pelanggan_id)
       if (!pel) return
 
-      if (pel.tipe === "HOTEL" && pel.billing_system === "FLAT" && (nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI")) return
+      const tipePel = pel.tipe?.toUpperCase()
+      const billingPel = pel.tipe_billing?.toUpperCase()
+      const jenisNota = nota.jenis?.toUpperCase()
+
+      if (tipePel === "HOTEL" && billingPel === "FLAT" && (jenisNota === "FLAT" || jenisNota === "FLAT ASLI")) return
 
       let kg = 0
-      if (pel.tipe === "RS") {
-        // RS is kiloan, qty is directly kilograms
-        kg = nota.items?.reduce((s: number, it: any) => s + (Number(it.qty) || 0), 0) || 0
-      } else if (pel.tipe === "HOTEL") {
+      if (tipePel === "RS") {
+        // RS uses berat_kg because items are null
+        kg = Number(nota.berat_kg) || 0
+      } else {
+        // Non-RS uses total / tarifInternal to estimate Kg equivalent
         kg = (nota.total || 0) / tarifInternal
       }
 
@@ -69,7 +74,7 @@ serve(async (req) => {
       kgHarian[tgl] += kg
     })
 
-    const hasil = karyawanList?.map((k) => {
+    const hasil = (karyawanList || []).map((k) => {
       let totalUpah = 0
       const rincian = []
       const current = new Date(tglMulai)
@@ -83,8 +88,9 @@ serve(async (req) => {
         let upah = 0
         let hadir = 0
 
-        if (status === "Hadir") {
+        if (status === "Hadir" && k.tipe_gaji !== "Tetap") {
           hadir = karyawanList?.filter((k2) => {
+            if (k2.tipe_gaji === "Tetap") return false;
             const a2 = absensiList?.find((a) => a.tanggal === tgl && a.karyawan_id === k2.id)
             return a2 ? a2.status === "Hadir" : true
           }).length || 1
@@ -93,18 +99,22 @@ serve(async (req) => {
         }
 
         rincian.push({ tanggal: tgl, kg, ongkos, hadir, upah, status })
-        current.setDate(current.getDate() + 1)
+        current.setUTCDate(current.getUTCDate() + 1)
       }
 
       const simpan = dataGaji?.find((g) => g.karyawan_id === k.id) || {}
       const insentif = simpan.insentif || 0
       const lembur = simpan.lembur || 0
       const potongan = simpan.potongan || 0
-      const totalDiterima = Math.floor(totalUpah + insentif + lembur - potongan)
+      
+      const gajiPokok = k.tipe_gaji === 'Tetap' ? (simpan.gaji_pokok ?? k.gaji_pokok ?? 0) : 0
+      
+      const totalDiterima = Math.floor(totalUpah + gajiPokok + insentif + lembur - potongan)
 
       return {
         karyawan: k,
         totalUpah,
+        gajiPokok,
         insentif,
         lembur,
         potongan,
@@ -121,9 +131,9 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }

@@ -2,15 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Lock, Unlock, Check, X, FileText, Printer, Download } from 'lucide-react';
 import { generateKopHTML, openPrintWindow, buildLinenRoomHTML, buildInvoicePelangganHTML } from '../../lib/printUtils';
+import { fmtRp, toRoman } from '../../lib/utils';
 
 interface Pelanggan {
   id: number;
   nama: string;
-  kode: string;
+  kode_invoice: string;
   tipe: string;
   tipe_billing: string;
   tarif_flat: number;
+  tarif_rs?: number;
+  alamat?: string;
+  kota?: string;
 }
+
+const calculateTotal = (nota: any, pel: any) => {
+  if (pel?.tipe?.toUpperCase() === 'RS' && nota.items === null) {
+    return (nota.berat_kg || 0) * (pel.tarif_rs || 0);
+  }
+  if (nota.items && Array.isArray(nota.items)) {
+    let total = 0;
+    nota.items.forEach((item: any) => {
+      total += (item.harga || item.basePrice || 0) * (item.qty || 0);
+    });
+    return total;
+  }
+  return nota.total || 0;
+};
 
 export default function Tagihan() {
   const [pelangganList, setPelangganList] = useState<Pelanggan[]>([]);
@@ -30,10 +48,13 @@ export default function Tagihan() {
       setPelangganList(data?.map(p => ({
         id: p.id,
         nama: p.nama,
-        kode: p.kode,
+        kode_invoice: p.kode_invoice,
         tipe: p.tipe,
-        tipe_billing: p.billing_system || 'Reguler',
-        tarif_flat: p.flat_rate || 0
+        tipe_billing: p.tipe_billing || 'Reguler',
+        tarif_flat: p.tarif_flat || 0,
+        tarif_rs: p.tarif_rs || 0,
+        alamat: p.alamat || '',
+        kota: p.kota || ''
       })) || []);
     }
     fetchPelanggan();
@@ -47,8 +68,8 @@ export default function Tagihan() {
   const getInvoiceNumber = async (pel: Pelanggan, bln: string) => {
     const [tahun, bulanStr] = bln.split("-");
     const bulanNum = parseInt(bulanStr, 10);
-    const key = `${pel.kode}_${bln}`;
-    const counterKey = `${pel.kode}_${tahun}`;
+    const key = `${pel.kode_invoice}_${bln}`;
+    const counterKey = `${pel.kode_invoice}_${tahun}`;
 
     // Get existing cache
     const { data: cached } = await supabase
@@ -68,7 +89,7 @@ export default function Tagihan() {
 
     const currentCounter = (counterData?.nilai || 0) + 1;
 
-    const formattedNo = `${String(currentCounter).padStart(3, "0")}/PL-${pel.kode}/${toRoman(bulanNum)}/${tahun}`;
+    const formattedNo = `${String(currentCounter).padStart(3, "0")}/PL-${pel.kode_invoice}/${toRoman(bulanNum)}/${tahun}`;
 
     // Save back
     await supabase.from('invoice_numbers').upsert({ cache_key: key, nomor: formattedNo });
@@ -98,11 +119,18 @@ export default function Tagihan() {
       setIsPaid(paid);
 
       // 2. Fetch all nota in that month
+      const startDate = `${selectedBulan}-01`;
+      const year = parseInt(selectedBulan.split('-')[0]);
+      const month = parseInt(selectedBulan.split('-')[1]);
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
       const { data: notas, error: notaErr } = await supabase
         .from('nota')
         .select('*')
         .eq('pelanggan_id', pel.id)
-        .like('tanggal', `${selectedBulan}%`);
+        .gte('tanggal', startDate)
+        .lte('tanggal', endDate)
+        .order('tanggal', { ascending: true });
 
       if (notaErr) throw notaErr;
 
@@ -140,26 +168,17 @@ export default function Tagihan() {
     }
   };
 
-  const handleDownloadExcel = () => {
-    let rows = '';
-    const pel = pelangganList.find(p => p.nama === selectedPelanggan);
-    const isFlatCustomer = pel?.tipe_billing === 'Flat';
-    const flatRate = isFlatCustomer ? pel?.tarif_flat || 0 : 0;
-
-    if (isFlatCustomer && flatRate > 0) {
-      rows += `<tr><td colspan="3">Biaya Langganan Flat Bulanan</td><td align="right">${flatRate}</td></tr>`;
-    }
-
-    invoiceData.forEach((nota, idx) => {
-      const isNotaFlat = nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
-      rows += `<tr>
-        <td>${idx + 1}</td>
-        <td>${new Date(nota.tanggal).toLocaleDateString('id-ID')}</td>
-        <td>${nota.jenis}</td>
-        <td align="right">${isFlatCustomer && isNotaFlat ? 0 : (nota.total || 0)}</td>
-      </tr>`;
-    });
-
+  const handleDownloadExcel = async () => {
+    const pelData = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!pelData || invoiceData.length === 0) return;
+    
+    setLoading(true);
+    const { data: kopData } = await supabase.from('kop').select('*').single();
+    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
+    const html = await buildLinenRoomHTML(pelData, selectedBulan, invoiceData, kopHTML);
+    
+    // Extract the table from HTML to put into Excel
+    // We can do this easily by wrapping it
     const excelHTML = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -171,26 +190,8 @@ export default function Tagihan() {
         </style>
       </head>
       <body>
-        <h2>Linen Room - ${selectedPelanggan} - ${selectedBulan}</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Tanggal</th>
-              <th>Jenis</th>
-              <th>Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="3" align="right"><strong>Total</strong></td>
-              <td align="right"><strong>${grandTotal}</strong></td>
-            </tr>
-          </tfoot>
-        </table>
+        <h2>Linen Room - ${pelData.nama} - ${selectedBulan}</h2>
+        ${html.match(/<table[\s\S]*?<\/table>/)?.[0] || '<table><tr><td>Gagal mengambil tabel</td></tr></table>'}
       </body>
       </html>
     `;
@@ -198,16 +199,17 @@ export default function Tagihan() {
     const blob = new Blob([excelHTML], { type: "application/vnd.ms-excel" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `LinenRoom_${selectedPelanggan.replace(/\s/g, "_")}_${selectedBulan}.xls`;
+    a.download = `LinenRoom_${pelData.nama.replace(/\s/g, "_")}_${selectedBulan}.xls`;
     a.click();
+    setLoading(false);
   };
 
   const handleCetakLinenRoom = async () => {
     const pelData = pelangganList.find(p => p.nama === selectedPelanggan);
     if (!pelData || invoiceData.length === 0) return;
     setLoading(true);
-    const { data: kopData } = await supabase.from('pengaturan').select('*').single();
-    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' });
+    const { data: kopData } = await supabase.from('kop').select('*').single();
+    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
     const html = await buildLinenRoomHTML(pelData, selectedBulan, invoiceData, kopHTML);
     openPrintWindow(html, `Linen Room - ${pelData.nama}`);
     setLoading(false);
@@ -217,24 +219,24 @@ export default function Tagihan() {
     const pelData = pelangganList.find(p => p.nama === selectedPelanggan);
     if (!pelData || invoiceData.length === 0) return;
     setLoading(true);
-    const { data: kopData } = await supabase.from('pengaturan').select('*').single();
-    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' });
+    const { data: kopData } = await supabase.from('kop').select('*').single();
+    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
     const html = await buildInvoicePelangganHTML(pelData, selectedBulan, invoiceData, kopHTML, invoiceNumber);
     openPrintWindow(html, `Invoice - ${pelData.nama}`);
     setLoading(false);
   };
 
-  const fmtRp = (val: number) => "Rp " + Math.floor(val).toLocaleString("id-ID");
 
   const pel = pelangganList.find(p => p.nama === selectedPelanggan);
-  const isFlatCustomer = pel?.tipe_billing === 'Flat';
+  const isFlatCustomer = pel?.tipe_billing?.toUpperCase() === 'FLAT';
   const flatRate = isFlatCustomer ? pel?.tarif_flat || 0 : 0;
   
   let totalNonFlat = 0;
   invoiceData.forEach(nota => {
     const isNotaFlat = nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+    const itemTotal = calculateTotal(nota, pel);
     if (!(isFlatCustomer && isNotaFlat)) {
-      totalNonFlat += nota.total || 0;
+      totalNonFlat += itemTotal;
     }
   });
 
@@ -300,15 +302,19 @@ export default function Tagihan() {
                         <td className="py-2 text-right text-gray-800 font-semibold">{fmtRp(flatRate)}</td>
                       </tr>
                     )}
-                    {invoiceData.map(nota => {
+                    {invoiceData.map((nota, idx) => {
                       const isNotaFlat = nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+                      const itemTotal = calculateTotal(nota, pel);
+                      const displayTotal = isFlatCustomer && isNotaFlat ? 0 : itemTotal;
+                      
+                      // Jika customer flat, dan notanya flat, mungkin totalnya 0 tapi tetap tampil di rincian
                       return (
                         <tr key={nota.id} className="border-b border-gray-50">
                           <td className="py-2 text-gray-800">{new Date(nota.tanggal).toLocaleDateString('id-ID')}</td>
-                          <td className="py-2 text-gray-800">{nota.jenis}</td>
-                          <td className="py-2 text-right text-gray-800">
-                            {isFlatCustomer && isNotaFlat ? '0 (Flat)' : fmtRp(nota.total || 0)}
+                          <td className="py-2 text-gray-600">
+                            {nota.jenis} {isFlatCustomer && isNotaFlat && <span className="text-xs text-blue-500 ml-1">(Flat)</span>}
                           </td>
+                          <td className="py-2 text-right font-medium text-gray-800">{fmtRp(displayTotal)}</td>
                         </tr>
                       );
                     })}

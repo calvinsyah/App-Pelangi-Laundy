@@ -15,7 +15,7 @@ serve(async (req) => {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } }
     )
 
     // Get user from auth header to verify they are logged in
@@ -34,6 +34,16 @@ serve(async (req) => {
       if (totalQty <= 0) throw new Error('Total qty item harus > 0')
     }
 
+    // Get the name of the jenis_nota
+    const { data: jenisNota } = await supabaseClient.from('jenis_nota').select('nama').eq('id', jenis_nota_id).single()
+    const jenis = jenisNota?.nama || 'KILOAN'
+
+    // Calculate total if applicable
+    let total = 0
+    if (!isFlat && items && items.length > 0) {
+      total = items.reduce((sum: number, item: any) => sum + ((Number(item.qty) || 0) * (Number(item.harga) || 0)), 0)
+    }
+
     // Insert nota
     const { data: nota, error: notaErr } = await supabaseClient
       .from('nota')
@@ -41,35 +51,25 @@ serve(async (req) => {
         tanggal,
         pelanggan_id,
         jenis_nota_id,
+        jenis,
         berat_kg: isFlat ? berat_kg : null,
-        status_bayar: 'Belum'
+        status_bayar: 'Belum',
+        total,
+        items: (!isFlat && items && items.length > 0) ? items : null
       }])
       .select()
       .single()
 
     if (notaErr) throw notaErr
 
-    // Insert items if reguler
-    if (!isFlat && items && items.length > 0) {
-      const itemInserts = items.map((item: any) => ({
-        nota_id: nota.id,
-        linen_id: item.linen_id,
-        qty: item.qty
-      }))
-      // Wait, we need a table for this, let's assume 'nota_items'
-      // If table doesn't exist, this will error in Supabase but logic is correct
-      const { error: itemErr } = await supabaseClient.from('nota_items').insert(itemInserts)
-      if (itemErr) throw itemErr
-    }
-
     return new Response(
       JSON.stringify({ success: true, nota }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }

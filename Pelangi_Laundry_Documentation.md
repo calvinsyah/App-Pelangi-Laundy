@@ -1,2207 +1,4151 @@
-# 📖 Dokumentasi Lengkap — Pelangi Laundry v24
+# 📦 DOKUMENTASI LENGKAP — PELANGI LAUNDRY v24
 
-> Dokumentasi teknis menyeluruh untuk aplikasi **Pelangi Laundry - Sistem Manajemen Laundry v24**.
-> Mencakup struktur `index.html`, aturan `style.css`, fungsi & logika `script.js`, perhitungan, serta relasi antar file.
-
----
-
-## 📑 Daftar Isi
-
-1. [Gambaran Umum Aplikasi](#1-gambaran-umum-aplikasi)
-2. [Arsitektur & Stack Teknologi](#2-arsitektur--stack-teknologi)
-3. [Struktur `index.html` per Section](#3-struktur-indexhtml-per-section)
-4. [Aturan `style.css` per Komponen](#4-aturan-stylecss-per-komponen)
-5. [Logika `script.js` per Modul](#5-logika-scriptjs-per-modul)
-6. [Perhitungan & Formula](#6-perhitungan--formula)
-7. [Relasi `index.html` ↔ `script.js`](#7-relasi-indexhtml--scriptjs)
-8. [Sistem Penyimpanan Data](#8-sistem-penyimpanan-data)
-9. [Alur Penggunaan Aplikasi](#9-alur-penggunaan-aplikasi)
+> Sistem Manajemen Laundry berbasis Web (HTML + CSS + JavaScript + Supabase)  
+> File: `index.html` · `style.css` · `script.js`
 
 ---
 
-## 1. Gambaran Umum Aplikasi
+## DAFTAR ISI
 
-**Pelangi Laundry** adalah sistem manajemen laundry berbasis web yang melayani dua tipe pelanggan utama:
-
-| Tipe Pelanggan | Sistem Billing | Satuan |
-|----------------|----------------|--------|
-| 🏨 **HOTEL**   | REGULER (per pcs linen) atau FLAT (langganan bulanan) | Pcs |
-| 🏥 **RS**      | REGULER per kilogram (KILOAN) | KG |
-
-### Fitur Utama
-- **Transaksi**: input nota cucian, riwayat pencarian nota
-- **Tagihan**: generate invoice bulanan, cetak kuitansi, lock invoice, status pembayaran
-- **Keuangan**: dashboard 8 indikator (omset, HPP, biaya adm, laba, piutang, utang, kas, modal), laporan laba rugi & neraca, pencatatan pengeluaran, manajemen utang
-- **Sistem**: master data (pelanggan, linen, jenis nota, karyawan), absensi harian, hitung gaji, backup & restore data
-- **Multi-Role**: `admin` (akses penuh) & `user` (hanya transaksi)
-
-### Sistem Login
-- `admin / admin` → akses semua menu (Transaksi, Tagihan, Keuangan, Sistem)
-- `user / user` → hanya menu Transaksi (Input Nota & Riwayat)
+1. [Struktur & Arsitektur Sistem](#1-struktur--arsitektur-sistem)
+2. [Lapisan Data (Dual Storage)](#2-lapisan-data-dual-storage)
+3. [Tabel Supabase](#3-tabel-supabase)
+4. [style.css — Detail Baris per Baris](#4-stylecss--detail-baris-per-baris)
+5. [index.html — Struktur DOM](#5-indexhtml--struktur-dom)
+6. [script.js Bagian 1 — Inisialisasi & Helper](#6-scriptjs-bagian-1--inisialisasi--helper)
+7. [script.js Bagian 2 — Nomor Invoice & Login](#7-scriptjs-bagian-2--nomor-invoice--login)
+8. [script.js Bagian 3 — Transaksi Nota](#8-scriptjs-bagian-3--transaksi-nota)
+9. [script.js Bagian 4 — Keuangan & Laporan](#9-scriptjs-bagian-4--keuangan--laporan)
+10. [script.js Bagian 5 — Gaji & Absensi](#10-scriptjs-bagian-5--gaji--absensi)
+11. [script.js Bagian 6 — Cetak & Export Dokumen](#11-scriptjs-bagian-6--cetak--export-dokumen)
+12. [script.js Bagian 7 — Backup & Restore](#12-scriptjs-bagian-7--backup--restore)
+13. [Navigasi & Flow Lengkap](#13-navigasi--flow-lengkap)
+14. [Relasi index.html ↔ script.js (Ringkasan)](#14-relasi-indexhtml--scriptjs-ringkasan)
 
 ---
 
-## 2. Arsitektur & Stack Teknologi
+## 1. Struktur & Arsitektur Sistem
+
+Aplikasi ini adalah **Single Page Application (SPA)** berbasis HTML/CSS/JavaScript murni (vanilla), dengan backend **Supabase** (PostgreSQL cloud) sebagai database utama, dan **localStorage** browser sebagai cache lokal. Tiga file bekerja bersama:
+
+| File | Peran |
+|---|---|
+| `index.html` | Struktur DOM — semua halaman, tab, modal, form |
+| `style.css` | Tampilan visual — warna, layout, responsivitas |
+| `script.js` | Logika bisnis — CRUD, kalkulasi, render UI |
+
+Ada juga `supabaseClient.js` (tidak diunggah) yang berisi inisialisasi koneksi ke Supabase, mengekspos variabel global `db` yang dipakai di seluruh `script.js`.
+
+---
+
+## 2. Lapisan Data (Dual Storage)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     BROWSER (Frontend)                       │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐   │
-│  │ index.html  │←→│  script.js   │←→│   style.css      │   │
-│  │ (Struktur)  │  │  (Logika)    │  │  (Tampilan)      │   │
-│  └─────────────┘  └──────┬───────┘  └──────────────────┘   │
-│                          │                                   │
-│            ┌─────────────┼─────────────┐                    │
-│            ▼             ▼             ▼                    │
-│     ┌────────────┐ ┌──────────┐ ┌──────────────┐           │
-│     │ Supabase   │ │localStor.│ │ IndexedDB    │           │
-│     │ (Cloud DB) │ │ (Cache)  │ │ (Logo biner) │           │
-│     └────────────┘ └──────────┘ └──────────────┘           │
-└─────────────────────────────────────────────────────────────┘
+[Supabase DB] ←→ [localStorage] ←→ [RAM / Variabel JS]
+   (server)         (cache)            (runtime)
 ```
 
-### Stack
-- **Frontend**: HTML5 + CSS3 + Vanilla JavaScript (tanpa framework)
-- **Database Cloud**: Supabase (PostgreSQL) via `@supabase/supabase-js@2` (CDN)
-- **Cache Lokal**: `localStorage` untuk semua data master & transaksi
-- **Storage Biner**: `IndexedDB` khusus menyimpan logo usaha (image)
-- **Cetak Dokumen**: `window.open()` + `document.write()` untuk PDF/HTML printable
-- **Export Excel**: HTML table dengan MIME `application/vnd.ms-excel`
+**Alur kerja:**
+- Setiap kali app dibuka → `refreshDataSistem()` menarik semua data dari Supabase → disimpan ke localStorage → di-load ke variabel global.
+- Saat user mengubah data → ditulis ke Supabase dulu → localStorage di-update → UI di-render ulang.
 
-### File yang Dimuat (di akhir `index.html`)
+**Mengapa dual storage?**  
+- Supabase = sumber kebenaran utama, sinkron antar perangkat/pengguna.
+- localStorage = cache cepat agar operasi baca (render tabel, hitung invoice, dll) tidak perlu memanggil API berulang kali.
+
+---
+
+## 3. Tabel Supabase
+
+Berdasarkan `refreshDataSistem()` di `script.js`, ada 18 tabel:
+
+| Tabel | Fungsi |
+|---|---|
+| `nota` | Transaksi harian laundry |
+| `pelanggan` | Master data pelanggan (hotel/RS) |
+| `jenis_nota` | Jenis layanan (REGULER, FLAT, SPOTING, dll) |
+| `master_linen` | Daftar item linen (Sheet King, Pillow Case, dll) |
+| `harga_pelanggan` | Harga linen per-pelanggan |
+| `linen_pelanggan` | Urutan linen aktif per-pelanggan |
+| `karyawan` | Data karyawan |
+| `absensi` | Absensi harian karyawan |
+| `gaji` | Data gaji + insentif/lembur/potongan |
+| `biaya` | Pengeluaran operasional |
+| `pengaturan` | Setting global (tarif, rekening, dll) |
+| `kop` | Data kop surat untuk cetak |
+| `invoice_numbers` | Nomor invoice yang sudah digenerate (cache stabil) |
+| `invoice_counter` | Counter nomor invoice per pelanggan/tahun |
+| `payment_status` | Status lunas/belum per invoice bulanan |
+| `locks` | Status kunci invoice per periode |
+| `utang` | Utang usaha dengan tenor cicilan |
+| `backup_history` | Riwayat bulan yang sudah di-backup |
+
+---
+
+## 4. style.css — Detail Baris per Baris
+
+### 4.1 CSS Variables (`:root`)
+
+```css
+:root {
+  --primary:       #0f172a;   /* Biru gelap, warna utama brand */
+  --primary-light: #1e293b;   /* Sedikit lebih terang dari primary */
+  --accent:        #3b82f6;   /* Biru cerah, untuk tombol & highlight */
+  --success:       #10b981;   /* Hijau, untuk status berhasil/lunas */
+  --danger:        #ef4444;   /* Merah, untuk hapus/error */
+  --warning:       #d97706;   /* Kuning-oranye, untuk peringatan */
+  --info:          #0891b2;   /* Cyan, untuk informasi */
+  --text:          #1e293b;   /* Warna teks utama */
+  --text-light:    #475569;   /* Teks sekunder/placeholder */
+  --border:        #e2e8f0;   /* Warna garis border */
+  --bg:            #f1f5f9;   /* Background halaman */
+  --card:          #ffffff;   /* Background card */
+  --radius:        10px;      /* Border-radius standar */
+  --shadow:        0 2px 8px rgba(0,0,0,0.08);   /* Bayangan ringan */
+  --shadow-md:     0 4px 16px rgba(0,0,0,0.12);  /* Bayangan medium */
+}
+```
+
+Semua warna dipakai via `var(--nama)` — sehingga mudah diubah di satu tempat dan berlaku ke seluruh halaman.
+
+---
+
+### 4.2 Reset Global (`*`)
+
+```css
+* {
+  box-sizing: border-box; /* Padding & border masuk dalam ukuran elemen */
+  margin: 0;
+  padding: 0;
+}
+```
+
+`box-sizing: border-box` adalah standar modern — mencegah elemen "membesar" karena padding.
+
+---
+
+### 4.3 Body
+
+```css
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);    /* Abu-abu muda */
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-bottom: 60px;     /* Ruang untuk FAB di mobile */
+}
+```
+
+---
+
+### 4.4 Halaman Login (`#loginPage`)
+
+```css
+#loginPage {
+  position: fixed; inset: 0;  /* Menutupi seluruh layar */
+  background: linear-gradient(135deg, #0f172a 0%, #1a56db 100%); /* Gradien biru */
+  display: flex;
+  justify-content: center; align-items: center; /* Box login di tengah */
+  z-index: 9999;              /* Di atas semua elemen */
+  padding: 15px;
+}
+
+.login-box {
+  background: white;
+  padding: 40px;
+  border-radius: 16px;
+  width: 100%; max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3); /* Bayangan dramatis */
+}
+
+.login-logo { font-size: 48px; text-align: center; margin-bottom: 12px; }
+```
+
+---
+
+### 4.5 Header Sticky
+
+```css
+header {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: #fff;
+  height: 53px;
+  position: sticky; top: 0; z-index: 100; /* Tetap di atas saat scroll */
+  display: flex; align-items: center; justify-content: space-between;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+header h1 { font-size: 18px; font-weight: 700; letter-spacing: 1px; }
+
+.user-badge {
+  background: rgba(255,255,255,0.15);
+  padding: 4px 12px;
+  border-radius: 20px; /* Pil/capsule shape */
+  font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+```
+
+---
+
+### 4.6 Container Utama
+
+```css
+.container {
+  max-width: 1100px;
+  margin: 160px auto 0; /* 160px = ruang untuk header + nav sticky */
+  padding: 0 15px;
+}
+```
+
+---
+
+### 4.7 Card System
+
+```css
+.card {
+  background: var(--card); /* white */
+  border-radius: var(--radius); /* 10px */
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+
+.card-title {
+  font-size: 17px;
+  border-left: 4px solid var(--accent); /* Garis biru di sisi kiri judul */
+  padding-left: 12px;
+  margin-bottom: 20px;
+  color: var(--primary);
+  font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+}
+```
+
+---
+
+### 4.8 Form & Input
+
+```css
+.form-group { margin-bottom: 16px; }
+
+.flex-row {
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;
+}
+.flex-row > .form-group { flex: 1; min-width: 0; }
+
+label, .form-group label {
+  display: block;
+  font-size: 13px; font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+input[type="text"], input[type="number"], input[type="date"],
+input[type="password"], input[type="month"], select, textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 15px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+
+input:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1); /* Glow biru saat fokus */
+}
+
+input:disabled, select:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+  color: var(--text-light);
+}
+```
+
+---
+
+### 4.9 Tombol (`.btn` dan `.btn-sm`)
+
+```css
+/* Tombol besar */
+.btn {
+  min-height: 42px;
+  padding: 10px 18px;
+  font-size: 14px; font-weight: 600;
+  border-radius: 8px; border: 0;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all 0.15s;
+}
+
+.btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px); /* Efek "naik" saat hover */
+}
+
+.btn-block { width: 100%; } /* Tombol full-width */
+
+/* Varian warna */
+.btn-primary   { background: var(--accent);   color: white; }
+.btn-success   { background: var(--success);  color: white; }
+.btn-danger    { background: var(--danger);   color: white; }
+.btn-warning   { background: var(--warning);  color: white; }
+.btn-info      { background: var(--info);     color: white; }
+.btn-secondary { background: #64748b;         color: white; }
+.btn-purple    { background: #8b5cf6;         color: white; }
+
+/* Tombol kecil */
+.btn-sm {
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 12px; font-weight: 600;
+  border-radius: 6px; border: 0;
+  color: white; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  transition: all 0.15s;
+}
+```
+
+---
+
+### 4.10 Navigasi Dua Tingkat (Sticky)
+
+```css
+/* Kategori utama (TRANSAKSI, TAGIHAN, KEUANGAN, SISTEM) */
+.nav-categories {
+  position: sticky;
+  top: 53px;    /* Tepat di bawah header (tinggi header = 53px) */
+  z-index: 99;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  display: flex; gap: 6px;
+  overflow-x: auto; /* Scroll horizontal di mobile */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Sub-tab di bawah kategori */
+.nav-subtabs {
+  position: sticky;
+  top: 105px;   /* 53px header + ~52px nav-categories */
+  z-index: 98;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 12px;
+  display: flex; gap: 4px;
+  overflow-x: auto;
+}
+
+/* Tombol kategori */
+.cat-btn {
+  min-height: 40px;
+  padding: 10px 14px;
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: transparent; color: var(--text);
+  cursor: pointer; transition: all 0.15s;
+}
+.cat-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.cat-btn:hover:not(.active) { color: var(--accent); border-color: var(--accent); }
+
+/* Tombol subtab */
+.tab-btn {
+  min-height: 40px;
+  padding: 10px 14px;
+  font-size: 13px; font-weight: 600;
+  border: 0; border-bottom: 3px solid transparent;
+  background: transparent; color: var(--text-light);
+  border-radius: 6px; cursor: pointer; transition: all 0.15s;
+}
+.tab-btn.active {
+  color: var(--primary);
+  background: #e0e7ff;
+  border-bottom-color: var(--primary); /* Garis bawah biru */
+  font-weight: 700;
+}
+```
+
+Navigasi berlapis 3 level yang semuanya sticky: **header (z:100) → kategori (z:99) → subtab (z:98)**.
+
+---
+
+### 4.11 Tabel Linen (`.linen-table`)
+
+```css
+.linen-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+.linen-table th {
+  background: #f8fafc;
+  padding: 11px 14px;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+  font-weight: 700; color: var(--primary);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px;
+}
+
+.linen-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+/* Table wrapper untuk horizontal scroll */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.table-wrap::-webkit-scrollbar { height: 6px; }
+.table-wrap::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+```
+
+---
+
+### 4.12 Modal
+
+```css
+.modal {
+  display: none; /* Default tersembunyi */
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5); /* Overlay gelap */
+  justify-content: center; align-items: center;
+  z-index: 10000;
+  backdrop-filter: blur(2px); /* Blur latar belakang */
+}
+
+#customConfirmModal { z-index: 20000; } /* Selalu di atas modal lain */
+
+.modal-content {
+  background: white;
+  padding: 28px;
+  border-radius: 14px;
+  width: 100%; max-width: 750px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  position: relative;
+  animation: slideUp 0.25s ease; /* Muncul dari bawah */
+  max-height: 92vh; overflow-y: auto;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.close-modal {
+  position: absolute; top: 14px; right: 18px;
+  font-size: 24px; cursor: pointer;
+  min-width: 44px; min-height: 44px; /* Touch target memadai */
+  display: flex; align-items: center; justify-content: center;
+}
+```
+
+---
+
+### 4.13 Badge Status
+
+```css
+.badge-status {
+  padding: 4px 12px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; color: white;
+  display: inline-block;
+}
+.status-unpaid  { background: var(--danger);  }  /* Merah  — Belum Dibayar */
+.status-paid    { background: var(--success); }  /* Hijau  — Lunas */
+.status-locked  { background: #475569;        }  /* Abu    — Terkunci */
+.status-unlocked{ background: var(--warning); }  /* Kuning — Tidak Terkunci */
+```
+
+---
+
+### 4.14 Finance Grid (Dashboard Keuangan)
+
+```css
+.finance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); /* Responsif otomatis */
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.finance-box {
+  padding: 22px;
+  border-radius: var(--radius);
+  color: white;
+  overflow: hidden;
+}
+.finance-box p  { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.85; }
+.finance-box h3 { font-size: 22px; font-weight: 700; }
+
+/* Warna per kotak */
+.bg-income  { background: linear-gradient(135deg, #10b981, #059669); } /* Hijau — Penjualan */
+.bg-expense { background: linear-gradient(135deg, #ef4444, #dc2626); } /* Merah — HPP */
+.bg-profit  { background: linear-gradient(135deg, #3b82f6, #2563eb); } /* Biru  — Laba */
+/* Warna inline untuk: Adm, Piutang, Utang, Kas, Modal */
+```
+
+---
+
+### 4.15 Toast Notification
+
+```css
+.toast-container {
+  position: fixed; bottom: 20px; right: 20px;
+  z-index: 99999; /* Paling atas dari semua */
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.toast {
+  padding: 12px 20px; border-radius: 8px; color: white;
+  font-weight: 600; font-size: 14px;
+  box-shadow: var(--shadow-md);
+  animation: toastIn 0.3s ease;
+  display: flex; align-items: center; gap: 8px;
+  min-width: 220px;
+}
+
+.toast.success { background: var(--success); }
+.toast.error   { background: var(--danger);  }
+.toast.warning { background: var(--warning); }
+.toast.info    { background: var(--info);    }
+
+@keyframes toastIn  { from { transform: translateX(60px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes toastOut { to   { transform: translateX(60px); opacity: 0; } }
+```
+
+---
+
+### 4.16 Button Loading State
+
+```css
+.btn.loading {
+  pointer-events: none; /* Tidak bisa diklik */
+  opacity: 0.7;
+}
+
+.btn.loading::after {
+  content: '';
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite; /* Spinner */
+  margin-left: 6px;
+}
+
+.btn:disabled {
+  opacity: 0.5; cursor: not-allowed;
+  transform: none !important; box-shadow: none !important;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+```
+
+---
+
+### 4.17 Sticky Save Bar
+
+```css
+.sticky-save-bar {
+  position: sticky; bottom: 0; z-index: 50;
+  background: white;
+  padding: 12px 0;
+  margin: 0 -24px; padding-left: 24px; padding-right: 24px;
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
+}
+/* Di desktop (≥1025px): dinonaktifkan, tombol simpan tampil normal */
+@media (min-width: 1025px) {
+  .sticky-save-bar { position: static; background: transparent; padding: 0; border: none; }
+}
+```
+
+---
+
+### 4.18 Drag & Drop Linen
+
+```css
+.linen-drag-row.dragging {
+  opacity: 0.4;
+  border: 2px dashed #3b82f6;   /* Garis putus-putus saat sedang di-drag */
+  background-color: #eff6ff;
+}
+
+.linen-drag-row.over {
+  border-top: 3px solid #3b82f6; /* Indikator posisi drop yang dituju */
+}
+```
+
+---
+
+### 4.19 FAB (Floating Action Button)
+
+```css
+.fab {
+  position: fixed; bottom: 78px; right: 16px;
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  border: 0; font-size: 28px; cursor: pointer;
+  box-shadow: 0 8px 20px rgba(59,130,246,0.4), 0 4px 8px rgba(0,0,0,0.1);
+  z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.2s, background 0.15s;
+}
+.fab.open {
+  transform: rotate(45deg); /* "+" berputar jadi "×" */
+  background: var(--danger);
+}
+
+.fab-menu {
+  position: fixed; bottom: 144px; right: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 89;
+  opacity: 0; pointer-events: none;
+  transform: translateY(10px);
+  transition: all 0.2s;
+}
+.fab-menu.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+
+.fab-item {
+  background: #fff; border: 1px solid var(--border); color: var(--text);
+  padding: 8px 14px; border-radius: 24px;
+  font-size: 13px; font-weight: 600; min-height: 40px;
+  white-space: nowrap; box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  cursor: pointer;
+}
+```
+
+---
+
+### 4.20 Mobile Card-List Linen
+
+```css
+/* Default: hanya card-list yang tampil di mobile */
+.linen-table-wrap { display: none; }
+.linen-card-list  { display: none; } /* Di mobile: tampil via media query */
+
+@media (max-width: 768px) {
+  .linen-table-wrap { display: none; }  /* Sembunyikan tabel */
+  .linen-card-list  { display: block; } /* Tampilkan card */
+}
+
+.linen-card-item {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.linen-card-item .info .name  { font-weight: 600; font-size: 14px; }
+.linen-card-item .info .price { font-size: 12px; color: var(--text-light); margin-top: 2px; }
+.linen-card-item input[type="number"] {
+  width: 60px; min-height: 36px;
+  padding: 6px 8px; font-size: 13px;
+  border: 1.5px solid var(--border); border-radius: 6px; text-align: center;
+}
+```
+
+---
+
+### 4.21 Responsive Breakpoints
+
+| Breakpoint | Aturan Utama |
+|---|---|
+| `max-width: 480px` | Tombol lebih tinggi (min-height 40-44px), teks lebih kecil |
+| `max-width: 640px` | `.flex-row` berubah jadi kolom vertikal; padding card dikurangi |
+| `max-width: 768px` | Tabel linen disembunyikan → card-list; modal padding dikecilkan; sticky-save-bar aktif |
+| `min-width: 1025px` | FAB disembunyikan (`display: none`); sticky-save-bar dibuat static |
+
+```css
+@media print {
+  /* Sembunyikan elemen non-cetak saat print */
+  .no-print, #loginPage, .nav-tabs, header, .modal:not(#customConfirmModal) {
+    display: none !important;
+  }
+  body { background: white; }
+}
+```
+
+---
+
+### 4.22 Aksesibilitas (Focus Visible)
+
+```css
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+```
+
+Standar WCAG — outline biru muncul hanya saat navigasi keyboard, tidak saat klik mouse.
+
+---
+
+## 5. index.html — Struktur DOM
+
+### 5.1 Head Section
+
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="supabaseClient.js"></script>  <!-- Inisialisasi klien Supabase -->
-<script src="script.js" defer></script>    <!-- Logika aplikasi (defer = jalankan setelah HTML parse) -->
-```
-
----
-
-## 3. Struktur `index.html` per Section
-
-File HTML berisi **1126 baris** yang dibagi menjadi beberapa blok utama:
-
-### 3.1 Head & Resources (baris 1-10)
-```html
+<!doctype html>
+<html lang="id">      <!-- lang="id": bahasa Indonesia, penting untuk aksesibilitas -->
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- viewport: skala 1:1 di mobile, tidak dizoom otomatis -->
   <title>Pelangi Laundry - v24 Final</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
+  <!-- CSS di head: dirender sebelum body tampil, mencegah FOUC (Flash of Unstyled Content) -->
 </head>
 ```
-- Mengatur viewport untuk responsif mobile
-- Memanggil `style.css` eksternal
 
-### 3.2 Komponen Global (baris 12-25)
-| ID / Class | Fungsi |
-|------------|--------|
-| `#toastContainer` | Container notifikasi toast (kanan-bawah layar) |
-| `#customConfirmModal` | Modal konfirmasi custom menggantikan `confirm()` native |
-| `#customConfirmMessage` | Pesan teks di dalam modal konfirmasi |
-| Tombol Batal & Lanjutkan | Memanggil `customConfirmRespond(false/true)` |
+---
 
-### 3.3 Halaman Login (`#loginPage`, baris 27-57)
+### 5.2 Toast Container
+
+```html
+<div class="toast-container" id="toastContainer"></div>
+```
+
+Kosong di HTML — diisi secara dinamis oleh fungsi `toast()` di `script.js` setiap ada notifikasi.
+
+---
+
+### 5.3 Custom Confirm Modal
+
+```html
+<div class="modal" id="customConfirmModal">
+  <div class="modal-content" style="max-width:400px; text-align:center;">
+    <h3 id="customConfirmMessage">Konfirmasi</h3>
+    <button class="btn btn-secondary" onclick="customConfirmRespond(false)">Batal</button>
+    <button class="btn btn-danger"    onclick="customConfirmRespond(true)">Ya, Lanjutkan</button>
+  </div>
+</div>
+```
+
+Menggantikan `window.confirm()` bawaan browser yang tidak bisa di-styling. Berbasis `Promise` — kode yang memanggil `await customConfirm(...)` akan menunggu hingga user memilih.
+
+---
+
+### 5.4 Halaman Login (`#loginPage`)
+
 ```html
 <div id="loginPage">
   <div class="login-box">
     <div class="login-logo">🌈</div>
     <h2>Pelangi Laundry</h2>
     <p>Sistem Manajemen Laundry v24</p>
-    <div id="loginError">⚠️ Username atau Password salah!</div>
-    <input type="text" id="username" placeholder="admin / user" 
-           onkeydown="if (event.key === 'Enter') prosesLogin();" />
-    <input type="password" id="password" placeholder="••••••"
-           onkeydown="if (event.key === 'Enter') prosesLogin();" />
+
+    <!-- Pesan error, default tersembunyi -->
+    <div id="loginError" style="display:none; color:var(--danger); ...">
+      ⚠️ Username atau Password salah!
+    </div>
+
+    <div class="form-group">
+      <label>Username</label>
+      <!-- onkeydown Enter: langsung prosesLogin() tanpa klik tombol -->
+      <input type="text" id="username" onkeydown="if(event.key==='Enter') prosesLogin()">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="password" onkeydown="if(event.key==='Enter') prosesLogin()">
+    </div>
     <button class="btn btn-primary btn-block" onclick="prosesLogin()">Masuk →</button>
   </div>
 </div>
 ```
-- Enter key di input username/password otomatis trigger `prosesLogin()`
-- `#loginError` default `display:none`, ditampilkan jika kredensial salah
 
-### 3.4 Aplikasi Utama (`#appContent`, baris 60-812)
-Diset `display: none` secara default, baru muncul setelah login sukses.
+---
 
-#### 3.4.1 Header (baris 62-68)
+### 5.5 App Content (`#appContent`)
+
+```html
+<div id="appContent" style="display:none">
+  <!-- Seluruh konten utama. Default tersembunyi, muncul setelah login. -->
+```
+
+#### Header:
 ```html
 <header class="no-print">
   <h1>🌈 PELANGI LAUNDRY</h1>
   <div class="header-right">
-    <span class="user-badge" id="roleBadge">-</span>
+    <span class="user-badge" id="roleBadge">-</span>   <!-- "👑 ADMIN" atau "👤 USER" -->
     <button class="btn-sm btn-secondary" onclick="logout()">Logout</button>
   </div>
 </header>
 ```
-- `#roleBadge` diisi "👑 ADMIN" atau "👤 USER" oleh `bukaAplikasi()`
-- `no-print` class menyembunyikan saat dicetak
 
-#### 3.4.2 Navigasi Kategori & Subtab (baris 70-98)
-Dua lapis navigasi:
-
-**Layer 1: Kategori Utama** (`.nav-categories`)
-| Tombol | `data-cat` | Akses |
-|--------|------------|-------|
-| 📊 Transaksi | `transaksi` | Semua user |
-| 🧾 Tagihan | `tagihan` | Admin only |
-| 💰 Keuangan | `keuangan` | Admin only |
-| ⚙️ Sistem | `sistem` | Admin only |
-
-Tombol admin-only ditandai class `admin-only` → disembunyikan via JS jika role = user.
-
-**Layer 2: Subtab** (`.nav-subtabs`)
-Diisi dinamis oleh fungsi `switchCategory(cat)` di `script.js` berdasarkan konstanta `TAB_CATEGORIES`.
-
-#### 3.4.3 Tab: Input Nota (`#tab-nota`, baris 100-152)
-Form input transaksi baru:
-- `#notaTanggal` — tanggal transaksi
-- `#pelangganSelect` — dropdown pelanggan (diisi oleh `renderPelangganDropdowns()`)
-- `#jenisNota` — dropdown jenis nota (diisi oleh `renderJenisNotaDropdown()`)
-- `#formHotel` — form khusus hotel (tabel linen dengan input qty per item)
-- `#formRS` — form khusus RS (input berat KG + info tarif)
-- `#tabelLinenInput` — tbody yang dirender oleh `renderFormLinenInput()`
-- `#btnSimpanNota` — tombol simpan yang memanggil `simpanNotaSistem()`
-
-#### 3.4.4 Tab: Riwayat Nota (`#tab-rekap`, baris 154-186)
-Pencarian nota:
-- `#cariTanggal` — filter tanggal
-- `#cariPelanggan` — input teks untuk pencarian nama (auto-filter via `oninput`)
-- Tombol Cari/Semua
-- `#tabelRiwayatNota` — tbody diisi oleh `cariNotaSistem()`
-
-#### 3.4.5 Tab: Invoice (`#tab-invoice`, baris 188-259)
-Generate invoice bulanan:
-- `#invoicePelangganSelect` — pilih pelanggan
-- `#invoiceBulanSelect` — pilih bulan (`type="month"`)
-- Tombol "Hitung Invoice" → `hitungDanAmbilInvoice()`
-- `#invoiceListCard` — daftar nota periode
-- `#invoiceResultCard` — preview invoice + tombol aksi:
-  - 🔒 Lock/Unlock → `toggleLockInvoice()`
-  - 💳 Status Pembayaran → `toggleStatusPembayaran()`
-  - 🖨️ Cetak Linen Room → `cetakInvoice()`
-  - ⬇️ Download LR → `downloadInvoice()`
-  - 📥 Excel (.csv) → `downloadLinenRoomExcel()`
-  - 🧾 Cetak Invoice → `cetakInvoicePelanggan()`
-
-#### 3.4.6 Tab: Kuitansi (`#tab-kuitansi`, baris 261-281)
-Cetak kuitansi resmi (legal portrait):
-- `#kuitansiPelangganSelect`, `#kuitansiBulanSelect`
-- Tombol Cetak → `generateKuitansi()`
-- Tombol Download → `downloadKuitansi()`
-- `#printKuitansiArea` — area render
-
-#### 3.4.7 Tab: Dashboard Keuangan (`#tab-omset`, baris 283-412)
-**8 finance box indikator**:
-| ID Box | Isi |
-|--------|-----|
-| `#boxTotalOmset` | Penjualan Bersih |
-| `#boxTotalHPP` | Total HPP (Harga Pokok Penjualan) |
-| `#boxTotalAdm` | Biaya Administrasi & Umum |
-| `#boxLabaBersih` | Laba Bersih |
-| `#boxPiutang` | Piutang Usaha |
-| `#boxTotalUtang` | Utang Usaha |
-| `#boxKas` | Kas / Bank |
-| `#boxModal` | Modal Bersih |
-
-**Filter Pengeluaran**:
-- `#filterExpMulai`, `#filterExpSelesai` — range tanggal
-- `#filterExpKat` — kategori (Semua/GAS/AIR/LISTRIK/LAIN)
-
-**Form Catat Pengeluaran**:
-- `#expTanggal`, `#expKategori` (15 kategori tetap), `#expKategoriCustom` (jika LAIN-LAIN)
-- `#expNominal` — input currency dengan auto-format titik (`formatCurrencyInput`)
-- `#expLunas` — checkbox status pembayaran
-- Tombol Simpan → `simpanBiayaOperasional()`
-
-**Riwayat Pengeluaran**:
-Tabel `#tabelRiwayatPengeluaran` diisi oleh `hitungMenejemenKeuangan()`. Per baris ada tombol Edit, Hapus, dan "Tandai Lunas" (jika belum lunas).
-
-#### 3.4.8 Tab: Laporan (`#tab-laporan`, baris 414-432)
-- Tombol View → `tampilkanLaporan()` (render laporan laba rugi + neraca)
-- Tombol Download PDF → `cetakLaporan()` (buka window print)
-- `#laporanContainer` — area render laporan
-
-#### 3.4.9 Tab: Utang (`#tab-utang`, baris 434-484)
-- Form catat utang baru: `#utangNama`, `#utangDari`, `#utangSampai`, `#utangCicilan`, `#utangKeterangan`
-- Tombol Simpan → `simpanUtang()`
-- Tabel daftar utang `#tabelDaftarUtang` dengan kolom: Nama, Periode, Cicilan/Bulan, Sisa Bulan, Sisa Total, Status, Aksi (Bayar Cicilan)
-
-#### 3.4.10 Tab: Master Data (`#tab-master`, baris 486-701)
-Berisi 5 card:
-1. **Master Pelanggan** — daftar + form tambah pelanggan baru (Nama, Kode, Tipe HOTEL/RS, Billing REGULER/FLAT, Flat Rate, Tarif RS, Alamat, Kota)
-2. **Master Karyawan** — tabel + form tambah (Nama, Bagian, Persentase %)
-3. **Pengaturan Sistem** — tarif internal hotel, ongkos/kg, info rekening bank, nama direktur, nilai peralatan
-4. **Kop Surat** — nama usaha, alamat, telepon, email, contact person, upload logo (≤2MB)
-5. **Maintenance Data** — tombol "Bersihkan Nota Rusak"
-
-Tombol di header card:
-- 👔 Linen → `bukaModalMasterLinen()`
-- ⚡ Jenis Nota → `bukaModalMasterJenisNota()`
-- 📋 Atur Linen → `bukaModalAturLinenJenisNota()`
-
-#### 3.4.11 Tab: Absensi (`#tab-absen`, baris 703-710)
-- `#absensiTanggal` — pilih tanggal, trigger `renderAbsensiTable()`
-- `#absensiContainer` — tabel absensi per karyawan dengan dropdown status (Hadir/Izin/Alpa/Libur)
-- Tombol Simpan → `simpanAbsensi()`
-
-#### 3.4.12 Tab: Gaji (`#tab-gaji`, baris 712-729)
-- `#gajiTglMulai`, `#gajiTglSelesai` — range periode gaji
-- Tombol Tampilkan → `tampilkanListGajiBaru()`
-- `#listGajiContainer` — tabel rekap gaji + tombol Slip/Download/Edit per karyawan
-
-#### 3.4.13 Tab: Backup (`#tab-backup`, baris 731-809)
-4 aksi backup:
-- 📤 **Export Semua Data** → `exportAllData()` (download JSON berisi semua tabel Supabase)
-- 📥 **Import Data** → `importDataViaFile()` (upload JSON, sync ke Supabase)
-- 🧹 **Backup & Bersihkan Semua** → `backupDanBersihkan()` (backup lalu hapus semua transaksi)
-- 📅 **Backup Semua Bulan Belum** → `backupSemuaBulanBelum()` (hanya backup bulan yang belum di-backup)
-
-`#backupStatusArea` menampilkan tabel status backup per bulan.
-
-### 3.5 FAB (Floating Action Button) — Mobile Only (baris 815-823)
+#### Navigasi Dua Tingkat:
 ```html
-<button class="fab" id="fabBtn" onclick="toggleFab()">
+<div class="nav-tabs no-print" id="navigationTabs">
+
+  <!-- Kategori utama -->
+  <nav class="nav-categories" id="navCategories" role="tablist">
+    <button class="cat-btn active"   data-cat="transaksi" onclick="switchCategory('transaksi')">📊 Transaksi</button>
+    <button class="cat-btn admin-only" data-cat="tagihan"  onclick="switchCategory('tagihan')"> 🧾 Tagihan</button>
+    <button class="cat-btn admin-only" data-cat="keuangan" onclick="switchCategory('keuangan')">💰 Keuangan</button>
+    <button class="cat-btn admin-only" data-cat="sistem"   onclick="switchCategory('sistem')">  ⚙️ Sistem</button>
+  </nav>
+
+  <!-- Sub-tab: dirender ulang oleh switchCategory() -->
+  <nav class="nav-subtabs" id="navSubtabs" role="tablist">
+    <!-- Konten dinamis dari JS -->
+  </nav>
+
+</div>
+```
+
+`admin-only` = class yang disembunyikan untuk role "user" (hanya admin yang bisa akses Tagihan, Keuangan, Sistem).
+
+---
+
+### 5.6 Tab-Tab Konten
+
+Semua tab adalah `div.tab-content` dengan `style="display:none"` default. Satu per satu ditampilkan oleh `switchTab()`:
+
+| ID Tab | Konten |
+|---|---|
+| `tab-nota` | Form input transaksi baru (linen qty atau berat RS) |
+| `tab-rekap` | Riwayat & pencarian nota |
+| `tab-invoice` | Invoice tagihan bulanan |
+| `tab-kuitansi` | Cetak kuitansi pembayaran |
+| `tab-omset` | Dashboard keuangan (8 kotak angka) |
+| `tab-laporan` | Laporan Laba Rugi & Neraca |
+| `tab-utang` | Manajemen utang usaha + cicilan |
+| `tab-master` | Master data: pelanggan, linen, jenis nota, karyawan, pengaturan, kop surat |
+| `tab-absen` | Absensi harian karyawan |
+| `tab-gaji` | Hitung gaji karyawan per periode |
+| `tab-backup` | Backup & restore data JSON |
+
+#### Tab Input Nota — Form Hotel:
+```html
+<div id="tab-nota" class="tab-content">
+  <div class="card">
+    <div class="flex-row">
+      <div class="form-group" style="flex:1">
+        <label>Tanggal</label><input type="date" id="notaTanggal">
+      </div>
+      <div class="form-group" style="flex:2">
+        <label>Pelanggan</label>
+        <!-- Diisi oleh renderPelangganDropdowns() -->
+        <select id="pelangganSelect" onchange="cekTipePelangganInput()"></select>
+      </div>
+      <div class="form-group" style="flex:2">
+        <label>Jenis Nota</label>
+        <!-- Diisi oleh renderJenisNotaDropdown() -->
+        <select id="jenisNota" onchange="renderFormLinenInput()"></select>
+      </div>
+    </div>
+
+    <!-- Form Hotel: tabel linen + input qty -->
+    <div id="formHotel">
+      <div class="linen-table-wrap"> <!-- Desktop: tabel -->
+        <table class="linen-table">
+          <tbody id="tabelLinenInput"></tbody> <!-- Diisi dinamis -->
+        </table>
+      </div>
+      <div class="linen-card-list" id="linenCardList"></div> <!-- Mobile: card -->
+    </div>
+
+    <!-- Form RS: input berat KG -->
+    <div id="formRS" style="display:none">
+      <input type="number" id="beratRS" step="0.1" min="0">
+      <p id="infoTarifRS"></p>
+    </div>
+
+    <!-- Tombol simpan (sticky di mobile) -->
+    <div class="sticky-save-bar">
+      <button class="btn btn-success btn-block" onclick="simpanNotaSistem()" id="btnSimpanNota">
+        ✓ Simpan Transaksi
+      </button>
+    </div>
+  </div>
+</div>
+```
+
+---
+
+### 5.7 Tab Keuangan — Finance Grid
+
+```html
+<div id="tab-omset" class="tab-content">
+  <div class="finance-grid">
+    <div class="finance-box bg-income"><p>Penjualan Bersih</p><h3 id="boxTotalOmset">Rp 0</h3></div>
+    <div class="finance-box bg-expense"><p>Total HPP</p><h3 id="boxTotalHPP">Rp 0</h3></div>
+    <div class="finance-box" style="background:linear-gradient(135deg,#f97316,#ea580c)">
+      <p>Biaya Adm & Umum</p><h3 id="boxTotalAdm">Rp 0</h3>
+    </div>
+    <div class="finance-box bg-profit"><p>Laba Bersih</p><h3 id="boxLabaBersih">Rp 0</h3></div>
+    <div class="finance-box" style="background:linear-gradient(135deg,#eab308,#ca8a04)">
+      <p>Piutang Usaha</p><h3 id="boxPiutang">Rp 0</h3>
+    </div>
+    <div class="finance-box" style="background:linear-gradient(135deg,#b91c1c,#991b1b)">
+      <p>Utang Usaha</p><h3 id="boxTotalUtang">Rp 0</h3>
+    </div>
+    <div class="finance-box" style="background:linear-gradient(135deg,#0d9488,#0f766e)">
+      <p>Kas / Bank</p><h3 id="boxKas">Rp 0</h3>
+    </div>
+    <div class="finance-box" style="background:linear-gradient(135deg,#7c3aed,#6d28d9)">
+      <p>Modal Bersih</p><h3 id="boxModal">Rp 0</h3>
+    </div>
+  </div>
+  <!-- ... form filter & tabel pengeluaran ... -->
+</div>
+```
+
+---
+
+### 5.8 Modal-Modal (10 Modal Total)
+
+| ID Modal | Fungsi |
+|---|---|
+| `customConfirmModal` | Dialog konfirmasi (Ya/Batal) |
+| `detailModal` | Lihat detail item nota |
+| `editLinenModal` | Edit qty linen di nota |
+| `editBiayaModal` | Edit data pengeluaran |
+| `editGajiModal` | Edit insentif/lembur/potongan karyawan |
+| `editKaryawanModal` | Edit data karyawan |
+| `modalMasterLinen` | CRUD master daftar linen |
+| `modalMasterJenisNota` | CRUD jenis nota (REGULER, FLAT, dll) |
+| `modalAturLinenJenisNota` | Pilih linen mana yang aktif per jenis nota |
+| `modalDetailPelanggan` | Edit pelanggan + harga linen + urutan drag-drop |
+
+---
+
+### 5.9 FAB (Floating Action Button) — Mobile Only
+
+```html
+<button class="fab" id="fabBtn" aria-label="Quick actions" onclick="toggleFab()">
   <span class="fab-icon">+</span>
 </button>
-<div class="fab-menu" id="fabMenu">
+<div class="fab-menu" id="fabMenu" role="menu">
   <button class="fab-item" onclick="fabAction('invoice')">🧾 Invoice</button>
   <button class="fab-item" onclick="fabAction('gaji')">💵 Gaji</button>
   <button class="fab-item" onclick="fabAction('absensi')">📅 Absensi</button>
 </div>
 ```
-- Hanya tampil di layar < 1025px (diatur di CSS)
-- Di-hidden di desktop
 
-### 3.6 Modal-Modal (baris 825-1117)
-Aplikasi punya **9 modal** untuk berbagai keperluan:
+Shortcut navigasi cepat di mobile. Disembunyikan di desktop (≥1025px) via CSS.
 
-| ID Modal | Fungsi |
-|----------|--------|
-| `#detailModal` | Detail nota (item + subtotal) |
-| `#editLinenModal` | Edit transaksi nota (qty & jenis) |
-| `#editBiayaModal` | Edit pengeluaran |
-| `#editGajiModal` | Edit insentif/lembur/potongan gaji |
-| `#editKaryawanModal` | Edit data karyawan |
-| `#modalMasterLinen` | CRUD master linen |
-| `#modalMasterJenisNota` | CRUD master jenis nota |
-| `#modalAturLinenJenisNota` | Atur linen yang aktif per jenis nota |
-| `#modalDetailPelanggan` | Edit pelanggan + daftar harga linen + urutan drag-drop |
+---
 
-### 3.7 Load Script (baris 1119-1124)
+### 5.10 Script Loading
+
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Library Supabase dari CDN -->
+
 <script src="supabaseClient.js"></script>
+<!-- Inisialisasi koneksi Supabase, mengekspos variabel global `db` -->
+
 <script src="script.js" defer></script>
-```
-- `defer` memastikan script.js dijalankan setelah HTML selesai di-parse
-
----
-
-## 4. Aturan `style.css` per Komponen
-
-File CSS berisi **1004 baris** dengan tema desain modern, mobile-first, dan print-friendly.
-
-### 4.1 Design Tokens (`:root`, baris 1-17)
-```css
-:root {
-  --primary: #0f172a;       /* Biru navy gelap - warna utama */
-  --primary-light: #1e293b;
-  --accent: #3b82f6;        /* Biru terang - aksen */
-  --success: #10b981;       /* Hijau - sukses/lunas */
-  --danger: #ef4444;        /* Merah - hapus/error */
-  --warning: #d97706;       /* Oranye - peringatan */
-  --info: #0891b2;          /* Cyan - info */
-  --text: #1e293b;
-  --text-light: #475569;
-  --border: #e2e8f0;
-  --bg: #f1f5f9;            /* Background body abu muda */
-  --card: #ffffff;
-  --radius: 10px;
-  --shadow: 0 2px 8px rgba(0,0,0,0.08);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
-}
-```
-Memakai CSS Custom Properties → konsistensi warna di seluruh aplikasi.
-
-### 4.2 Reset & Body (baris 19-32)
-```css
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
-  font-size: 14px;
-  line-height: 1.5;
-  padding-bottom: 60px;     /* Space untuk FAB mobile */
-}
-```
-
-### 4.3 Halaman Login (baris 34-72)
-- `#loginPage` full-screen `position:fixed; inset:0` dengan gradient biru
-- `.login-box` putih, rounded 16px, shadow besar, max-width 380px, terpusat
-
-### 4.4 Header (baris 74-107)
-```css
-header {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
-  color: #fff;
-  height: 53px;
-  position: sticky;         /* Menempel saat scroll */
-  top: 0;
-  z-index: 100;
-}
-```
-- `.user-badge` untuk label role di header kanan
-
-### 4.5 Container & Card (baris 109-134)
-```css
-.container {
-  max-width: 1100px;
-  margin: 160px auto 0;     /* Offset untuk header + nav sticky */
-  padding: 0 15px;
-}
-.card {
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 24px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
-}
-.card-title {
-  border-left: 4px solid var(--accent);   /* Aksen kiri pada judul card */
-  padding-left: 12px;
-  color: var(--primary);
-  font-weight: 700;
-}
-```
-
-### 4.6 Form Controls (baris 136-192)
-- `.flex-row` — layout horizontal flexbox dengan `flex-wrap:wrap`
-- `.form-group` — wrapper label + input, margin-bottom 16px
-- `input`, `select`, `textarea` — width 100%, border 1.5px, padding 10px 14px, transition border + box-shadow
-- `:focus` — border biru + glow biru 3px
-- `:disabled` — background abu, cursor not-allowed
-
-### 4.7 Button System (baris 194-269)
-```css
-.btn { padding: 11px 20px; border-radius: 8px; font-weight: 600; min-height: 42px; }
-.btn-primary   { background: var(--accent); }
-.btn-success   { background: var(--success); }
-.btn-danger    { background: var(--danger); }
-.btn-warning   { background: var(--warning); }
-.btn-info      { background: var(--info); }
-.btn-secondary { background: #64748b; }
-.btn-purple    { background: #8b5cf6; }
-.btn-block     { width: 100%; }
-.btn-sm        { padding: 6px 12px; font-size: 13px; min-height: 36px; }
-.btn:hover     { filter: brightness(1.08); transform: translateY(-1px); }
-.btn:disabled  { opacity: 0.5; cursor: not-allowed; }
-.btn.loading::after { /* Spinner CSS via border + animation spin */ }
-```
-- Min-height 42px untuk mobile touch target (rekomendasi aksesibilitas)
-- `.loading::after` menampilkan spinner putar saat tombol diklik
-
-### 4.8 Navigation Tabs (baris 271-358)
-Dua layer navigasi:
-
-**Kategori Utama** (`.nav-categories`)
-```css
-.nav-categories {
-  position: sticky;
-  top: 53px;                /* Di bawah header */
-  z-index: 99;
-  background: #fff;
-  overflow-x: auto;         /* Scroll horizontal di mobile */
-}
-.cat-btn {
-  min-height: 40px;
-  padding: 10px 14px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  border-radius: 8px;
-}
-.cat-btn.active {
-  background: var(--primary);
-  color: #fff;
-}
-```
-
-**Subtab** (`.nav-subtabs`)
-```css
-.nav-subtabs {
-  position: sticky;
-  top: 105px;               /* Di bawah kategori */
-  z-index: 98;
-  background: #f8fafc;
-}
-.tab-btn.active {
-  color: var(--primary);
-  background: #e0e7ff;
-  border-bottom: 3px solid var(--primary);
-}
-```
-
-### 4.9 Tabel Linen (baris 360-385)
-```css
-.linen-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-.linen-table th {
-  background: #f8fafc;
-  border-bottom: 2px solid var(--border);
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.3px;
-}
-.linen-table td {
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-```
-
-### 4.10 Modal System (baris 387-426)
-```css
-.modal {
-  display: none;            /* Default hidden */
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  backdrop-filter: blur(2px);
-  z-index: 10000;
-  padding: 15px;
-  /* Saat .show: display:flex; center kanan-bawah */
-}
-#customConfirmModal { z-index: 20000; }  /* Selalu di atas modal lain */
-.modal-content {
-  background: white;
-  padding: 28px;
-  border-radius: 14px;
-  max-width: 750px;
-  max-height: 92vh;
-  overflow-y: auto;
-  animation: slideUp 0.25s ease;   /* Animasi muncul dari bawah */
-}
-```
-- Animasi `slideUp` (translateY 20px → 0 + opacity 0 → 1)
-- `#customConfirmModal` punya z-index 20000 agar selalu di atas modal lain
-
-### 4.11 Badge Status (baris 428-451)
-```css
-.badge-status { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-.status-unpaid  { background: var(--danger); }
-.status-paid    { background: var(--success); }
-.status-locked  { background: #475569; }
-.status-unlocked{ background: var(--warning); }
-```
-
-### 4.12 Finance Grid (baris 453-492)
-```css
-.finance-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-}
-.finance-box {
-  padding: 22px;
-  border-radius: var(--radius);
-  color: white;
-  background: linear-gradient(135deg, ...);
-}
-.bg-income  { background: linear-gradient(135deg, #10b981, #059669); }
-.bg-expense { background: linear-gradient(135deg, #ef4444, #dc2626); }
-.bg-profit  { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-```
-
-### 4.13 Toast Notifications (baris 519-576)
-```css
-.toast-container {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 99999;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.toast {
-  padding: 12px 20px;
-  border-radius: 8px;
-  color: white;
-  font-weight: 600;
-  animation: toastIn 0.3s ease;   /* Slide dari kanan */
-  min-width: 220px;
-}
-@keyframes toastIn  { from { transform: translateX(60px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-@keyframes toastOut { to { transform: translateX(60px); opacity: 0; } }
-```
-
-### 4.14 Responsive Breakpoints (baris 578-667)
-**Mobile (max-width: 640px)**
-```css
-.flex-row { flex-direction: column; }
-.card { padding: 16px; }
-```
-
-**Mobile Kecil (max-width: 480px)**
-```css
-.btn-sm { min-height: 40px; padding: 8px 10px; font-size: 12px; }
-.cat-btn, .tab-btn { min-height: 44px; padding: 10px 12px; }
-```
-
-**Tablet (max-width: 768px)**
-```css
-.btn { min-height: 44px; }
-.linen-table-wrap { display: none; }   /* Sembunyikan tabel desktop */
-.linen-card-list { display: block; }   /* Tampilkan card mobile */
-.sticky-save-bar {
-  position: sticky;          /* Tombol simpan menempel di bawah */
-  bottom: 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, #fff 30%);
-  backdrop-filter: blur(8px);
-}
-```
-
-**Desktop (min-width: 1025px)**
-```css
-.flex-row { flex-direction: row; }
-.sticky-save-bar { position: static; }   /* Tidak perlu sticky */
-.fab, .fab-menu { display: none; }       /* FAB disembunyikan */
-```
-
-### 4.15 Print Rules (baris 669-681)
-```css
-@media print {
-  body { background: white; }
-  .no-print,
-  #loginPage,
-  .nav-tabs,
-  header,
-  .modal:not(#customConfirmModal) {
-    display: none !important;     /* Sembunyikan elemen non-cetak */
-  }
-}
-```
-
-### 4.16 Sticky Save Bar (baris 716-728)
-Tombol "Simpan Transaksi" menempel di bawah layar saat scroll di mobile, dengan shadow tipis di atas border.
-
-### 4.17 Drag & Drop Styling (baris 730-738)
-```css
-.linen-drag-row.dragging {
-  opacity: 0.4;
-  border: 2px dashed #3b82f6;
-  background-color: #eff6ff;
-}
-.linen-drag-row.over {
-  border-top: 3px solid #3b82f6;
-}
-```
-Untuk fitur drag-drop urutan linen di modal edit pelanggan.
-
-### 4.18 FAB (Floating Action Button) (baris 896-953)
-```css
-.fab {
-  position: fixed;
-  bottom: 78px;
-  right: 16px;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 8px 20px rgba(59,130,246,0.4), 0 4px 8px rgba(0,0,0,0.1);
-  z-index: 90;
-}
-.fab.open {
-  transform: rotate(45deg);      /* Berubah jadi X */
-  background: var(--danger);
-}
-.fab-menu {
-  position: fixed;
-  bottom: 144px;
-  right: 16px;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(10px);
-  transition: all 0.2s;
-}
-.fab-menu.open {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-```
-
-### 4.19 Card List untuk Mobile (baris 955-986)
-Saat di mobile, tabel linen diganti dengan `.linen-card-list` berisi `.linen-card-item` (layout flex horizontal dengan info di kiri dan input qty di kanan).
-
-### 4.20 Badge Variants & Accessibility (baris 988-1002)
-```css
-.badge-success { background: #d1fae5; color: #065f46; }   /* AA contrast safe */
-.badge-warning { background: #fef3c7; color: #78350f; }
-.badge-info    { background: #cffafe; color: #0e7490; }
-.badge-danger  { background: #fee2e2; color: #991b1b; }
-
-*:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+<!-- defer: script dijalankan setelah seluruh DOM selesai di-parse
+     Ini mencegah error "element not found" karena DOM belum siap -->
 ```
 
 ---
 
-## 5. Logika `script.js` per Modul
+## 6. script.js Bagian 1 — Inisialisasi & Helper
 
-File JS berisi **2872 baris** yang dibagi menjadi modul-modul berikut:
+### 6.1 Custom Confirm (Promise-based)
 
-### 5.1 Custom Confirm Dialog (baris 1-16)
 ```javascript
 let customConfirmResolve = null;
+
 window.customConfirm = function(message) {
   return new Promise((resolve) => {
     document.getElementById('customConfirmMessage').innerText = message;
-    document.getElementById("customConfirmModal").style.display = "flex";
-    customConfirmResolve = resolve;
+    document.getElementById('customConfirmModal').style.display = 'flex';
+    customConfirmResolve = resolve; // Simpan resolve agar dipanggil saat user klik
   });
 };
+
 window.customConfirmRespond = function(response) {
-  document.getElementById("customConfirmModal").style.display = "none";
+  document.getElementById('customConfirmModal').style.display = 'none';
   if (customConfirmResolve) {
-    customConfirmResolve(response);
-    customConfirmResolve = null;
+    customConfirmResolve(response); // true = Ya, false = Batal
+    customConfirmResolve = null;    // Reset agar tidak terpanggil lagi
   }
 };
 ```
-**Fungsi**: Menggantikan `confirm()` native browser yang sering diblokir.
-**Pola**: Promise-based — pemanggil menggunakan `await customConfirm("...")` untuk menunggu respons user.
 
-### 5.2 Inisialisasi Data Default (baris 17-42)
+**Cara pakai di kode lain:**
+```javascript
+if (!await window.customConfirm("Hapus nota ini?")) return;
+// Kode lanjut HANYA jika user klik "Ya, Lanjutkan"
+```
+
+---
+
+### 6.2 DB_DEFAULTS — Nilai Awal localStorage
+
 ```javascript
 const DB_DEFAULTS = {
-  DB_NOTA: [], DB_BIAYA: [], DB_LOCKS: {}, DB_PAYMENT_STATUS: {},
-  DB_KARYAWAN: [], DB_ABSENSI: [], DB_GAJI: [], DB_BACKUP_HISTORY: [],
-  DB_PENGATURAN: { 
-    tarifInternalHotel: 7000, 
-    ongkosPerKg: 1200, 
-    direktur: "Bagus Riadi Kurniawan", 
-    peralatan: 0 
+  DB_NOTA: [],
+  DB_BIAYA: [],
+  DB_LOCKS: {},            // { "namaHotel_2025-01": true/false }
+  DB_PAYMENT_STATUS: {},   // { "namaHotel_2025-01": true/false }
+  DB_KARYAWAN: [],
+  DB_ABSENSI: [],
+  DB_GAJI: [],
+  DB_BACKUP_HISTORY: [],
+
+  DB_PENGATURAN: {
+    tarifInternalHotel: 7000,  // Rp/KG untuk konversi total → KG (hitung gaji)
+    ongkosPerKg: 1200,         // Rp/KG untuk upah borongan karyawan
+    rekeningName: "",
+    rekeningNo: "",
+    bank: "",
+    direktur: "Bagus Riadi Kurniawan",
+    peralatan: 0
   },
+
   DB_KOP: { nama: "", alamat: "", telepon: "", email: "", kontak: "" },
-  DB_INVOICE_NUMBERS: {}, DB_INVOICE_COUNTER: {},
+  DB_INVOICE_NUMBERS: {},  // { "GDS_2025-01": "001/PL-GDS/I/2025" }
+  DB_INVOICE_COUNTER: {},  // { "GDS_2025": 3 } — counter per pelanggan per tahun
+
   DB_JENIS_NOTA: [
-    { name: "REGULER", multiplier: 1, forFlat: false, forReguler: true },
-    { name: "FLAT", multiplier: 1, forFlat: true, forReguler: false },
-    { name: "FLAT ASLI", multiplier: 1, forFlat: true, forReguler: false },
-    { name: "SPOTING", multiplier: 2, forFlat: true, forReguler: true },
-    { name: "GUEST LAUNDRY", multiplier: 1, forFlat: true, forReguler: true },
-    { name: "NON FLAT", multiplier: 1.5, forFlat: true, forReguler: false },
-    { name: "FNB", multiplier: 1.2, forFlat: true, forReguler: false },
+    { name: "REGULER",      multiplier: 1,   forFlat: false, forReguler: true  },
+    { name: "FLAT",         multiplier: 1,   forFlat: true,  forReguler: false },
+    { name: "FLAT ASLI",    multiplier: 1,   forFlat: true,  forReguler: false },
+    { name: "SPOTING",      multiplier: 2,   forFlat: true,  forReguler: true  },
+    { name: "GUEST LAUNDRY",multiplier: 1,   forFlat: true,  forReguler: true  },
+    { name: "NON FLAT",     multiplier: 1.5, forFlat: true,  forReguler: false },
+    { name: "FNB",          multiplier: 1.2, forFlat: true,  forReguler: false },
   ],
-  DB_PELANGGAN: [ /* 3 pelanggan contoh */ ],
-  DB_MASTER_LINEN: [ /* 3 linen contoh */ ],
-  DB_HARGA_PELANGGAN: {},
-  DB_LINEN_PELANGGAN: {},
+
+  DB_PELANGGAN: [
+    { id:1, name:"Tab Capsule Hotel Kayoon", type:"HOTEL", billingSystem:"REGULER", flatRate:0, tarifRS:0 },
+    { id:2, name:"Hotel Great",              type:"HOTEL", billingSystem:"FLAT",    flatRate:15000000 },
+    { id:3, name:"RS Siti Khodijah",         type:"RS",    billingSystem:"REGULER", tarifRS:7000 },
+  ],
+
+  DB_MASTER_LINEN: [
+    { id:1, name:"Sheet King" },
+    { id:2, name:"Pillow Case" },
+    { id:3, name:"Bath Towel" },
+  ],
+
+  DB_HARGA_PELANGGAN: {},   // { pelangganId: { linenId: harga } }
+  DB_LINEN_PELANGGAN: {},   // { pelangganId: [{linenId, urutan}] }
 };
+
+// Inisialisasi: set default HANYA jika key belum ada di localStorage
 Object.keys(DB_DEFAULTS).forEach((key) => {
-  if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(DB_DEFAULTS[key]));
+  if (!localStorage.getItem(key))
+    localStorage.setItem(key, JSON.stringify(DB_DEFAULTS[key]));
 });
 ```
-**Fungsi**: Seed data awal ke localStorage hanya jika belum ada. Mencegah aplikasi crash di first run.
 
-### 5.3 Helper: Linen per Pelanggan (baris 44-133)
-Tiga fungsi utama untuk mengelola linen custom per pelanggan:
+---
+
+### 6.3 Variabel Global Runtime
 
 ```javascript
-getLinenPelanggan(pelangganId)     // Ambil daftar linen + urutan untuk pelanggan
-saveLinenPelanggan(pelangganId, list)  // Simpan ke localStorage
-hasLinenPelangganConfig(pelangganId)   // Cek apakah pelanggan punya konfigurasi sendiri
+let jenisNotaList = [];     // Cache jenis nota dari Supabase
+let pelangganList = [];     // Cache pelanggan
+let masterLinen = [];       // Cache master linen
+let karyawanList = [];      // Cache karyawan
+let absensiList = [];       // Cache absensi
+let pengaturan = {};        // Setting global
+let hargaPelanggan = {};    // Map: { pelangganId: { linenId: harga } }
+let currentUserRole = "";   // "admin" atau "user"
+let isInvoicePaid = false;  // Status bayar invoice yang sedang dilihat
+let _hasilGaji = [];        // Hasil hitung gaji (untuk akses saat cetak slip)
+let _gajiAktif = null;      // Referensi gaji yang sedang diedit
 ```
 
-**`initLinenDragDrop(tbody)`**: Inisialisasi HTML5 drag-and-drop untuk baris tabel linen di modal edit pelanggan. Event yang dipasang:
-- `dragstart` — simpan elemen sumber, tambah class `.dragging`
-- `dragover` — `preventDefault()` untuk mengizinkan drop
-- `dragenter` / `dragleave` — toggle class `.over`
-- `drop` — hitung posisi drop (atas/bawah) berdasarkan Y cursor, lalu `insertBefore`
-- `dragend` — bersihkan semua class sementara
+---
 
-### 5.4 Generator Kode Pelanggan (baris 136-150)
+### 6.4 Helper: Linen per Pelanggan
+
+#### `getLinenPelanggan(pelangganId)`
 ```javascript
-function generateKodePelanggan(nama) {
-  const GENERIC = ["HOTEL", "HOTELS", "THE", "RS", "RUMAH", "SAKIT", "TAB", "CAPSULE", "CLINIC", "VILLA", "RESORT", "APARTEMEN"];
-  const kata = (nama || "").toUpperCase().replace(/[^A-Z0-9\s]/g, "").split(/\s+/).filter(Boolean);
-  let kode = "";
-  for (const k of kata) {
-    if (GENERIC.includes(k)) continue;
-    kode += k[0];
-    if (kode.length >= 5) break;
+function getLinenPelanggan(pelangganId) {
+  const db = JSON.parse(localStorage.getItem("DB_LINEN_PELANGGAN") || "{}");
+  const list = db[pelangganId];
+  if (!list || list.length === 0) {
+    // Fallback: tampilkan semua linen dengan urutan default
+    return masterLinen.map((m, idx) => ({ linenId: m.id, urutan: idx }));
   }
-  return kode || (kata[0] ? kata[0].substring(0, 3) : "PL");
+  return [...list].sort((a, b) => a.urutan - b.urutan); // Urutkan berdasarkan urutan
 }
 ```
-**Aturan**: Ambil huruf pertama setiap kata yang BUKAN kata generik (HOTEL, RS, dll). Contoh:
-- "Tab Capsule Hotel Kayoon" → "K" (hanya "Kayoon" yang tidak generik)
-- "Hotel Great" → "G"
-- "RS Siti Khodijah" → "SK"
 
-### 5.5 Migrasi & Helper Invoice Number (baris 152-186)
+#### `saveLinenPelanggan(pelangganId, list)` — Simpan ke localStorage
 ```javascript
-function toRoman(monthNum) { /* 1→I, 2→II, ..., 12→XII */ }
-
-async function getInvoiceStableNumber(kode, bln) {
-  // Format: 001/PL-GDS/VII/2025
-  // - urut: counter per (kode, tahun)
-  // - PL-{kode}: kode pelanggan
-  // - toRoman(bulan): bulan Romawi
-  // - tahun
-  // Caching via localStorage DB_INVOICE_NUMBERS & DB_INVOICE_COUNTER
-  // Sync ke Supabase tabel invoice_numbers & invoice_counter
-}
-
-async function setCounterAwalPelanggan(kode, tahun, nilai) {
-  // Set manual counter awal (untuk sinkronisasi dengan invoice fisik)
+function saveLinenPelanggan(pelangganId, list) {
+  const db = JSON.parse(localStorage.getItem("DB_LINEN_PELANGGAN") || "{}");
+  db[pelangganId] = list;
+  localStorage.setItem("DB_LINEN_PELANGGAN", JSON.stringify(db));
 }
 ```
 
-**Format nomor invoice**: `XXX/PL-KODE/BULAN_ROMAWI/TAHUN`
-Contoh: `001/PL-GDS/VII/2025` = Invoice #1 untuk pelanggan kode GDS bulan Juli 2025.
+---
 
-### 5.6 IndexedDB untuk Logo (baris 192-221)
+### 6.5 Drag & Drop Linen (`initLinenDragDrop`)
+
+Mengimplementasikan HTML5 Drag and Drop API untuk mengurutkan linen:
+
 ```javascript
-function openKopDB() {
-  // Buka database "PelangiLaundry" dengan object store "logo"
-}
-async function saveLogoToIndexedDB(file) {
-  // Konversi file → dataURL → simpan ke IndexedDB
-}
-async function getLogoFromIndexedDB() {
-  // Ambil logo dari IndexedDB, return dataURL atau object URL
+function initLinenDragDrop(tbody) {
+  let dragSrcEl = null;
+
+  tbody.querySelectorAll('.linen-drag-row').forEach(row => {
+    row.addEventListener('dragstart', function(e) {
+      dragSrcEl = this;
+      e.dataTransfer.effectAllowed = 'move';
+      this.classList.add('dragging'); // CSS: opacity 0.4 + border putus-putus
+      e.dataTransfer.setData('text/plain', ''); // Wajib di Firefox
+    });
+
+    row.addEventListener('dragover', function(e) {
+      e.preventDefault(); // Izinkan drop
+      e.dataTransfer.dropEffect = 'move';
+    });
+
+    row.addEventListener('dragenter', function(e) {
+      if (dragSrcEl !== this) this.classList.add('over');
+    });
+
+    row.addEventListener('dragleave', function(e) {
+      this.classList.remove('over');
+    });
+
+    row.addEventListener('drop', function(e) {
+      e.stopPropagation(); e.preventDefault();
+      this.classList.remove('over');
+      if (dragSrcEl && dragSrcEl !== this) {
+        // Hitung apakah drop di atas/bawah tengah baris
+        const rect = this.getBoundingClientRect();
+        const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+        tbody.insertBefore(dragSrcEl, next ? this.nextSibling : this);
+      }
+    });
+
+    row.addEventListener('dragend', function(e) {
+      // Bersihkan semua class sisa
+      tbody.querySelectorAll('.linen-drag-row').forEach(r => {
+        r.classList.remove('dragging', 'over');
+      });
+    });
+  });
 }
 ```
-Logo disimpan di IndexedDB (bukan localStorage) karena ukuran bisa besar (base64 image).
 
-### 5.7 Helper Utilities (baris 223-262)
+---
+
+### 6.6 Helper Utility Lengkap
+
+#### `toast(msg, type, dur)` — Notifikasi popup
 ```javascript
 function toast(msg, type = "success", dur = 3000) {
-  // Buat elemen toast, tambahkan ke #toastContainer, hapus setelah dur ms
+  const icons = { success: "✓", error: "✗", warning: "⚠", info: "ℹ" };
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+  document.getElementById("toastContainer").appendChild(el);
+  setTimeout(() => {
+    el.style.animation = "toastOut 0.3s ease forwards"; // Animasi keluar
+    setTimeout(() => el.remove(), 300);
+  }, dur);
 }
+```
+
+#### `loadingThen(label, asyncFn)` — Wrapper async dengan toast info
+```javascript
 function loadingThen(label, asyncFn) {
-  // Tampilkan toast info + jalankan asyncFn dengan error handling
+  toast(`${label}...`, "info", 1500); // Tampilkan info sementara
+  Promise.resolve(asyncFn()).catch(err => {
+    console.error(err);
+    toast("Gagal memproses dokumen.", "error");
+  });
 }
+```
+
+#### `formatCurrencyInput(input)` — Format angka saat ketik
+```javascript
 function formatCurrencyInput(input) {
-  // Format inputan user jadi "1.000.000" (titik ribuan)
-  let v = input.value.replace(/\D/g, "");
+  let v = input.value.replace(/\D/g, ""); // Hapus semua non-digit
   input.value = v ? parseInt(v).toLocaleString("id-ID") : "";
+  // "1500000" → "1.500.000"
 }
+```
+
+#### `parseCurrencyValue(str)` — Parsing balik ke angka
+```javascript
 function parseCurrencyValue(str) {
-  // Parse "1.000.000" → 1000000 (number)
   return parseInt(str.toString().replace(/\./g, "").replace(/[^\d]/g, "")) || 0;
+  // "1.500.000" → 1500000
 }
+```
+
+#### `fmtRp(val)` — Format tampilan Rupiah
+```javascript
 function fmtRp(val) {
-  // Format number → "Rp 1.000.000" (dengan handle negatif)
   const abs = Math.abs(val);
   const sign = val < 0 ? "- " : "";
   return sign + "Rp " + Math.floor(abs).toLocaleString("id-ID");
-}
-function terbilang(angka) {
-  // Konversi angka → teks bahasa Indonesia
-  // 125000 → "seratus dua puluh lima ribu"
-  // Rekursif untuk belasan, puluhan, ratusan, ribuan, juta, milyar
-}
-function generateNotaId(tgl) {
-  // Generate ID unik nota: "20250705-1234" (tanggal + random 4 digit)
-  return `${tgl.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`;
-}
-function setBtnLoading(btn, loading) {
-  // Toggle class .loading + disabled pada tombol
+  // -1500000 → "- Rp 1.500.000"
+  //  1500000 → "Rp 1.500.000"
 }
 ```
 
-### 5.8 Login & Aplikasi (baris 270-291)
+#### `terbilang(angka)` — Angka ke teks Indonesia (rekursif)
+```javascript
+function terbilang(angka) {
+  if (angka === 0) return "nol";
+  const s = ["","satu","dua","tiga","empat","lima","enam","tujuh","delapan","sembilan","sepuluh","sebelas"];
+  if (angka < 12)   return s[angka];
+  if (angka < 20)   return terbilang(angka - 10) + " belas";          // 12–19
+  if (angka < 100)  return s[Math.floor(angka/10)] + " puluh " + terbilang(angka%10);
+  if (angka < 200)  return "seratus " + terbilang(angka - 100);
+  if (angka < 1000) return s[Math.floor(angka/100)] + " ratus " + terbilang(angka%100);
+  if (angka < 2000) return "seribu " + terbilang(angka - 1000);
+  if (angka < 1e6)  return terbilang(Math.floor(angka/1000)) + " ribu " + terbilang(angka%1000);
+  if (angka < 1e9)  return terbilang(Math.floor(angka/1e6))  + " juta " + terbilang(angka%1e6);
+  return terbilang(Math.floor(angka/1e9)) + " milyar " + terbilang(angka%1e9);
+}
+// Contoh: terbilang(1500000) → "satu juta lima ratus ribu"
+```
+
+#### `generateNotaId(tgl)` — ID nota unik
+```javascript
+function generateNotaId(tgl) {
+  return `${tgl.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`;
+  // "2025-01-15" → "20250115-5432"
+}
+```
+
+#### `setBtnLoading(btn, loading)` — Loading state tombol
+```javascript
+function setBtnLoading(btn, loading) {
+  if (!btn) return;
+  if (loading) { btn.classList.add('loading'); btn.disabled = true; }
+  else         { btn.classList.remove('loading'); btn.disabled = false; }
+}
+// Pola penggunaan:
+// const btn = document.getElementById('btnSimpan');
+// setBtnLoading(btn, true);
+// try { /* operasi async */ } finally { setBtnLoading(btn, false); }
+```
+
+---
+
+### 6.7 IndexedDB untuk Logo (`openKopDB`, `saveLogoToIndexedDB`, `getLogoFromIndexedDB`)
+
+Logo usaha disimpan di **IndexedDB** (bukan localStorage) karena ukurannya bisa besar (base64 image bisa >1MB, sedangkan localStorage limitnya ~5MB total):
+
+```javascript
+function openKopDB() {
+  return new Promise((resolve, reject) => {
+    const r = indexedDB.open("PelangiLaundry", 1);
+    r.onupgradeneeded = (e) => {
+      if (!e.target.result.objectStoreNames.contains("logo"))
+        e.target.result.createObjectStore("logo"); // Buat store jika belum ada
+    };
+    r.onsuccess = (e) => resolve(e.target.result);
+    r.onerror   = (e) => reject(e.target.error);
+  });
+}
+
+async function saveLogoToIndexedDB(file) {
+  // Konversi file → base64 DataURL
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const db = await openKopDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("logo", "readwrite");
+    tx.objectStore("logo").put(dataUrl, "kop"); // Key "kop"
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+  });
+}
+
+async function getLogoFromIndexedDB() {
+  try {
+    const db = await openKopDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction("logo", "readonly");
+      const req = tx.objectStore("logo").get("kop");
+      req.onsuccess = () => {
+        const r = req.result;
+        if (typeof r === "string") resolve(r);         // String base64
+        else if (r instanceof Blob) resolve(URL.createObjectURL(r)); // Blob
+        else resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch { return null; }
+}
+```
+
+---
+
+### 6.8 `refreshDataSistem()` — Sinkronisasi Master dari Supabase
+
+Fungsi ini dijalankan setiap login dan setelah setiap operasi write penting. Menarik semua data secara paralel dengan `Promise.all`:
+
+```javascript
+async function refreshDataSistem() {
+  showLoading("Sinkronisasi data...");
+  try {
+    // Tarik 15 tabel sekaligus secara paralel
+    const [{ data: jn }, { data: pl }, { data: ml }, ...] = await Promise.all([
+      db.from("jenis_nota").select("*"),
+      db.from("pelanggan").select("*"),
+      db.from("master_linen").select("*"),
+      db.from("karyawan").select("*"),
+      db.from("absensi").select("*"),
+      db.from("pengaturan").select("*").limit(1),
+      db.from("kop").select("*").limit(1),
+      db.from("harga_pelanggan").select("*"),
+      db.from("invoice_numbers").select("*"),
+      db.from("invoice_counter").select("*"),
+      db.from("payment_status").select("*"),
+      db.from("locks").select("*"),
+      db.from("utang").select("*"),
+      db.from("backup_history").select("*"),
+      db.from("linen_pelanggan").select("*"),
+    ]);
+
+    // Transform format Supabase (snake_case) → format JS (camelCase)
+    jenisNotaList = jn.map(j => ({
+      name: j.name, multiplier: j.multiplier,
+      forFlat: j.for_flat, forReguler: j.for_reguler,
+      linen_config: j.linen_config || []
+    }));
+
+    pelangganList = pl.map(p => ({
+      id: p.id, name: p.nama, kode: p.kode,
+      type: p.tipe, billingSystem: p.billing_system,
+      flatRate: p.flat_rate, tarifRS: p.tarif_rs,
+      alamat: p.alamat, kota: p.kota
+    }));
+
+    // ... transformasi tabel lainnya ...
+
+    // Simpan semua ke localStorage sebagai cache
+    localStorage.setItem("DB_JENIS_NOTA",    JSON.stringify(jenisNotaList));
+    localStorage.setItem("DB_PELANGGAN",     JSON.stringify(pelangganList));
+    // ... dst ...
+
+    // Tarik nota terpisah (bisa banyak, jadi dipisah)
+    const { data: notaData } = await db.from("nota").select("*");
+    localStorage.setItem("DB_NOTA", JSON.stringify((notaData||[]).map(normalizeNota)));
+
+    // Render semua UI
+    renderPelangganDropdowns();
+    renderJenisNotaDropdown();
+    renderFormLinenInput();
+    // ... dst ...
+
+  } catch (err) {
+    toast("Gagal memuat data dari server.", "error");
+  } finally {
+    hideLoading();
+  }
+}
+```
+
+#### `showLoading` / `hideLoading` — Overlay Loading
+```javascript
+function showLoading(text = "Memuat...") {
+  let el = document.getElementById("globalLoadingOverlay");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "globalLoadingOverlay";
+    el.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.75);z-index:9999;...";
+    el.innerHTML = `<div style="border-top:4px solid #1e3a5f;border-radius:50%;animation:spin..."></div>
+                    <p>${text}</p>`;
+    document.body.appendChild(el);
+  } else { el.querySelector("p").innerText = text; el.style.display = "flex"; }
+}
+
+function hideLoading() {
+  const el = document.getElementById("globalLoadingOverlay");
+  if (el) el.style.display = "none";
+}
+```
+
+---
+
+### 6.9 `generateKodePelanggan(nama)` — Auto-generate Kode
+
+```javascript
+function generateKodePelanggan(nama) {
+  // Kata-kata generik yang diabaikan
+  const GENERIC = ["HOTEL","HOTELS","THE","RS","RUMAH","SAKIT","TAB","CAPSULE","CLINIC","VILLA","RESORT","APARTEMEN"];
+  const kata = (nama || "").toUpperCase().replace(/[^A-Z0-9\s]/g, "").split(/\s+/).filter(Boolean);
+  let kode = "";
+  for (const k of kata) {
+    if (GENERIC.includes(k)) continue; // Lewati kata generik
+    kode += k[0]; // Ambil huruf pertama
+    if (kode.length >= 5) break;
+  }
+  return kode || (kata[0] ? kata[0].substring(0, 3) : "PL");
+  // "Tab Capsule Hotel Kayoon" → skip "TAB","CAPSULE","HOTEL" → "K" → "KAY" → ... → "K"
+  // "Hotel Great" → skip "HOTEL" → "G" → kode = "G"
+}
+```
+
+---
+
+## 7. script.js Bagian 2 — Nomor Invoice & Login
+
+### 7.1 `toRoman(monthNum)` — Bulan ke Romawi
+
+```javascript
+function toRoman(monthNum) {
+  const r = ["","I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
+  return r[monthNum] || "";
+  // 1→"I", 6→"VI", 12→"XII"
+}
+```
+
+---
+
+### 7.2 `getInvoiceStableNumber(kode, bln)` — Nomor Invoice Stabil
+
+```javascript
+async function getInvoiceStableNumber(kode, bln) {
+  // kode = "GDS", bln = "2025-01"
+  const [tahunStr, bulanStr] = bln.split("-");
+  const tahun    = parseInt(tahunStr, 10);
+  const bulanNum = parseInt(bulanStr, 10);
+  const cacheKey = `${kode}_${bln}`; // "GDS_2025-01"
+
+  // Langkah 1: Cek cache localStorage — jika sudah ada, kembalikan yang sama (STABLE)
+  const cached = JSON.parse(localStorage.getItem("DB_INVOICE_NUMBERS")) || {};
+  if (cached[cacheKey]) return cached[cacheKey];
+
+  // Langkah 2: Generate nomor baru
+  const counters   = JSON.parse(localStorage.getItem("DB_INVOICE_COUNTER")) || {};
+  const counterKey = `${kode}_${tahun}`; // "GDS_2025"
+  let urut = (counters[counterKey] || 0) + 1; // Increment counter
+  counters[counterKey] = urut;
+  localStorage.setItem("DB_INVOICE_COUNTER", JSON.stringify(counters));
+
+  // Format: "001/PL-GDS/I/2025"
+  const nomor = `${String(urut).padStart(3,"0")}/PL-${kode}/${toRoman(bulanNum)}/${tahun}`;
+
+  // Simpan ke cache
+  cached[cacheKey] = nomor;
+  localStorage.setItem("DB_INVOICE_NUMBERS", JSON.stringify(cached));
+
+  // Sync ke Supabase
+  await db.from("invoice_numbers").upsert({ cache_key: cacheKey, nomor }, { onConflict: "cache_key" });
+  await db.from("invoice_counter").upsert({ counter_key: counterKey, nilai: urut }, { onConflict: "counter_key" });
+
+  return nomor;
+}
+```
+
+**Mengapa "stable"?**  
+Nomor invoice hukumnya tidak boleh berubah setiap kali dicetak ulang. Sistem menyimpan nomor yang sudah pernah digenerate dan mengembalikan yang sama persis.
+
+**Contoh hasil:** `003/PL-GDS/I/2025` = Invoice ke-3, Pelangi Laundry, pelanggan GDS, bulan Januari 2025.
+
+---
+
+### 7.3 `setCounterAwalPelanggan(kode, tahun, nilai)` — Set Nomor Awal
+
+Digunakan saat admin ingin menyambung nomor invoice dengan fisik yang sudah ada:
+
+```javascript
+async function setCounterAwalPelanggan(kode, tahun, nilai) {
+  const counters = JSON.parse(localStorage.getItem("DB_INVOICE_COUNTER")) || {};
+  counters[`${kode}_${tahun}`] = nilai;
+  localStorage.setItem("DB_INVOICE_COUNTER", JSON.stringify(counters));
+  await db.from("invoice_counter").upsert({ counter_key: `${kode}_${tahun}`, nilai }, { onConflict: "counter_key" });
+}
+```
+
+---
+
+### 7.4 Login & Logout
+
 ```javascript
 function prosesLogin() {
   const u = document.getElementById("username").value.trim();
   const p = document.getElementById("password").value;
+
   if ((u === "admin" && p === "admin") || (u === "user" && p === "user")) {
     currentUserRole = u;
     document.getElementById("loginError").style.display = "none";
     bukaAplikasi();
   } else {
-    document.getElementById("loginError").style.display = "block";
+    document.getElementById("loginError").style.display = "block"; // Tampilkan pesan error
   }
 }
 ```
 
-**`bukaAplikasi()`**:
-1. Sembunyikan `#loginPage`, tampilkan `#appContent`
-2. Set `#roleBadge` = "👑 ADMIN" atau "👤 USER"
-3. Toggle visibility elemen `.admin-only` (sembunyikan jika user, tampilkan jika admin)
-4. Set tanggal default (hari ini) untuk semua input date
-5. Set range default filter pengeluaran (awal bulan → hari ini)
-6. Set range default gaji (hari ini → 13 hari ke depan)
-7. Set bulan default untuk invoice/kuitansi
-8. Panggil `refreshDataSistem()` untuk sinkronisasi awal
-9. Panggil `cekPeringatanBackup()` untuk cek bulan belum di-backup
-10. Pindah ke tab "Input Nota"
-
-### 5.9 Refresh Data Sistem (baris 314-340)
-Fungsi kritis: `refreshDataSistem()` mengambil semua data dari Supabase secara paralel dengan `Promise.all()`:
+**Dua role yang tersedia:**
+- `admin` / `admin` → Akses penuh: Transaksi + Tagihan + Keuangan + Sistem
+- `user` / `user` → Hanya tab Transaksi (Input Nota & Riwayat Nota)
 
 ```javascript
-const [jn, pl, ml, kr, ab, pg, kp, hp, invNum, invCnt, payStat, lk, ut, bh, lpRes] = await Promise.all([
-  db.from("jenis_nota").select("*"),
-  db.from("pelanggan").select("*"),
-  db.from("master_linen").select("*"),
-  db.from("karyawan").select("*"),
-  db.from("absensi").select("*"),
-  db.from("pengaturan").select("*").limit(1),
-  db.from("kop").select("*").limit(1),
-  db.from("harga_pelanggan").select("*"),
-  db.from("invoice_numbers").select("*"),
-  db.from("invoice_counter").select("*"),
-  db.from("payment_status").select("*"),
-  db.from("locks").select("*"),
-  db.from("utang").select("*"),
-  db.from("backup_history").select("*"),
-  db.from("linen_pelanggan").select("*"),
-]);
-```
+async function bukaAplikasi() {
+  // 1. Sembunyikan login, tampilkan app
+  document.getElementById("loginPage").style.display = "none";
+  document.getElementById("appContent").style.display = "block";
 
-Lalu mapping setiap tabel ke format JS dan menyimpan ke localStorage sebagai cache. Setelah refresh:
-- Render semua dropdown & tabel
-- Set nilai input pengaturan & kop
-- Tampilkan logo dari IndexedDB
-- Hitung keuangan & render daftar utang
+  // 2. Set badge role
+  document.getElementById("roleBadge").innerText =
+    currentUserRole === "admin" ? "👑 ADMIN" : "👤 USER";
 
-### 5.10 Render Dropdown (baris 342-360)
-```javascript
-function renderPelangganDropdowns() {
-  // Isi 3 dropdown: #pelangganSelect, #invoicePelangganSelect, #kuitansiPelangganSelect
-  // Format: "🏨 Nama Hotel" atau "🏥 Nama RS"
-  // Pertahankan selected value jika masih ada
-}
-function renderJenisNotaDropdown(selected = null) {
-  // Filter jenis nota berdasarkan tipe & billing pelanggan:
-  // - RS → hanya "KILOAN" (disabled)
-  // - HOTEL FLAT → hanya yang forFlat=true
-  // - HOTEL REGULER → hanya yang forReguler=true
-}
-function cekTipePelangganInput() {
-  // Toggle #formHotel / #formRS berdasarkan tipe pelanggan terpilih
-  // Tampilkan info tarif RS jika pelanggan RS
-}
-```
+  // 3. Sembunyikan menu admin-only untuk role user
+  if (currentUserRole !== "admin")
+    document.querySelectorAll(".admin-only").forEach(e => e.style.display = "none");
+  else
+    document.querySelectorAll(".admin-only").forEach(e => e.style.display = "");
 
-### 5.11 Render Form Input Linen (baris 370-401)
-```javascript
-function renderFormLinenInput() {
-  // 1. Dapatkan jenis nota & multiplier
-  // 2. Dapatkan pelanggan & pelangganId
-  // 3. Dapatkan linen_ids yang diatur untuk jenis nota ini
-  // 4. Jika linen_ids kosong → tampilkan peringatan "Atur Linen dulu"
-  // 5. Irisan: linen per-pelanggan (sorted by urutan) ∩ linen_ids jenis nota
-  // 6. Render baris tabel dengan: nomor, nama, harga satuan, input qty
-  //    - data-id, data-name, data-price untuk dipakai simpanNotaSistem
-}
-```
+  // 4. Set tanggal default = hari ini di semua input date
+  const today = new Date().toISOString().split("T")[0]; // "2025-01-15"
+  document.getElementById("notaTanggal").value = today;
+  document.getElementById("cariTanggal").value = today;
+  document.getElementById("absensiTanggal").value = today;
+  document.getElementById("expTanggal").value = today;
+  // ... dst ...
 
-**Aturan irisan linen**:
-- Pelanggan mengatur urutan & subset linen mereka sendiri (via `linen_pelanggan`)
-- Jenis nota memfilter subset mana yang aktif untuk jenis transaksi ini
-- Hasil akhir = irisan keduanya
+  // 5. Set range gaji default: hari ini s/d +13 hari
+  const end = new Date(); end.setDate(end.getDate() + 13);
+  document.getElementById("gajiTglSelesai").value = end.toISOString().split("T")[0];
 
-### 5.12 Simpan Nota (baris 403-441)
-```javascript
-async function simpanNotaSistem() {
-  setBtnLoading(btn, true);
-  try {
-    // 1. Validasi tanggal & pelanggan
-    // 2. Branch berdasarkan tipe pelanggan:
-    //    a. RS: total = berat (KG) × tarifRS
-    //    b. HOTEL:
-    //       - Kalkulasi subtotal per item: qty × hargaSatuan (sudah termasuk multiplier)
-    //       - Validasi tidak ada qty negatif
-    //       - Validasi total > 0
-    //       - Jika FLAT + jenis "FLAT": total diset 0 (gratis, sudah cover flat rate)
-    // 3. Generate notaId: "YYYYMMDD-XXXX"
-    // 4. Insert ke Supabase tabel nota
-    // 5. Reset form & refresh data
-    // 6. Update riwayat & keuangan
-  } finally { setBtnLoading(btn, false); }
-}
-```
+  // 6. Set filter pengeluaran: awal bulan ini s/d hari ini
+  const now = new Date();
+  document.getElementById("filterExpMulai").value =
+    new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+  document.getElementById("filterExpSelesai").value = today;
 
-### 5.13 Cari Nota (baris 443-501)
-```javascript
-async function cariNotaSistem() {
-  // 1. Ambil filter tanggal & nama pelanggan
-  // 2. Query Supabase: db.from("nota").select("*").order("tanggal").order("id")
-  // 3. Filter tambahan by nama pelanggan di sisi JS (karena relasi)
-  // 4. Render baris tabel dengan kolom: No Nota, Tanggal, Pelanggan, Jenis, Total, Aksi
-  // 5. Aksi: Detail, Edit, (Hapus khusus admin)
-}
-```
-
-### 5.14 Lock & Status Invoice (baris 503-547)
-```javascript
-function getLockKey(pel, bln) { return `${pel}_${bln}`; }
-function isInvoiceLocked(pel, bln) { /* cek DB_LOCKS */ }
-
-async function toggleLockInvoice() {
-  // Toggle is_locked di Supabase + localStorage
-  // Update badge LOCKED/UNLOCKED
-  // Re-render invoice
-}
-
-async function toggleStatusPembayaran() {
-  // Toggle is_paid di Supabase tabel payment_status
-  // Update badge BELUM DIBAYAR/LUNAS
-  // Recalculate keuangan (karena piutang berubah)
-}
-```
-
-### 5.15 Hitung Ulang Nota (baris 549-559)
-```javascript
-function hitungUlangNota(nota) {
-  // Re-calculate total nota berdasarkan harga & multiplier TERBARU
-  // Dipakai saat invoice ditampilkan jika belum di-lock
-  // - Cari multiplier dari jenisNotaList
-  // - Cari data pelanggan
-  // - Untuk setiap item: update basePrice + recalc subtotal
-  // - Update nota.total
-}
-```
-
-### 5.16 Hapus Nota (baris 561-571)
-```javascript
-async function hapusNotaDariInvoice(id, asal) {
-  if (!await window.customConfirm("Hapus nota ini?")) return;
-  await db.from("nota").delete().eq("id", id);
+  // 7. Load semua data dari Supabase
   await refreshDataSistem();
-  if (asal === "invoice") hitungDanAmbilInvoice();
-  else await cariNotaSistem();
-  await hitungMenejemenKeuangan();
-}
-```
 
-### 5.17 Hitung & Ambil Invoice (baris 573-611)
-```javascript
-function hitungDanAmbilInvoice() {
-  // 1. Filter DB_NOTA by pelanggan & bulan
-  // 2. Jika kosong → tampilkan toast warning
-  // 3. Update badge lock
-  // 4. Jika invoice TIDAK terkunci → hitungUlangNota (recalc dengan harga terbaru)
-  // 5. Untuk pelanggan FLAT:
-  //    - Jika jenis nota "FLAT" atau "FLAT ASLI" → total diset 0
-  //    - Tambahkan baris "Biaya Langganan Flat Bulanan" = flatRate
-  // 6. Untuk pelanggan REGULER → total = sum semua nota
-  // 7. Render tabel invoice + preview print
-  // 8. Update badge status pembayaran
-}
-```
+  // 8. Cek peringatan backup
+  cekPeringatanBackup();
 
-### 5.18 Generate Kop Surat HTML (baris 613-637)
-```javascript
-async function generateKopHTML() {
-  // Ambil logo dari IndexedDB
-  // Ambil data kop dari localStorage DB_KOP
-  // Return HTML dengan:
-  //   - Logo (kiri, max 65px height)
-  //   - Nama usaha (huruf besar, bold, biru navy)
-  //   - Alamat, telepon, email, contact person
-  //   - Border bawah 3px double #1e3a5f
-}
-```
-
-### 5.19 Cetak Invoice (Linen Room) (baris 639-688)
-Tiga fungsi terkait:
-```javascript
-async function cetakInvoice()         // Buka window print untuk Linen Room
-async function downloadInvoice()      // Download HTML Linen Room
-async function downloadLinenRoomExcel() // Download sebagai .xls (Excel)
-```
-
-### 5.20 Build Linen Room HTML (baris 690-734)
-```javascript
-async function buildLinenRoomHTML(pel, bln, logoUrl) {
-  // 1. Generate kop HTML
-  // 2. Filter nota by pelanggan & bulan
-  // 3. Buat grid linen: { linenId: { name, price, qty: {1..31} } }
-  //    - Inisialisasi qty 1-31 = 0 untuk setiap linen
-  // 4. Untuk setiap nota:
-  //    - Skip jika FLAT customer & jenis nota bukan FLAT/FLAT ASLI
-  //    - Tambah qty per item ke kolom hari yang sesuai
-  // 5. Render tabel dengan:
-  //    - Kolom: No, Items, Price, Tanggal 1-31, Total (qty), Amount (qty × price)
-  //    - Baris terakhir: TOTAL KESELURUHAN dengan sum per kolom hari
-}
-```
-
-**Linen Room** adalah rekap harian per linen untuk satu bulan. Format ini khusus untuk pelanggan hotel agar linen room mereka bisa cross-check dengan catatan internal.
-
-### 5.21 Cetak Invoice Pelanggan (baris 736-915)
-```javascript
-async function cetakInvoicePelanggan() {
-  // Buka window print untuk Invoice resmi (format Indonesia)
+  // 9. Buka tab pertama
+  switchTab("tab-nota");
 }
 
-async function buildInvoicePelangganHTML(pel, bln, kopHTML) {
-  // 1. Hitung totals per jenis nota
-  // 2. Untuk pelanggan FLAT:
-  //    - "Biaya Langganan Flat Bulanan" = flatRate
-  //    - Skip FLAT/FLAT ASLI dari detail (sudah dicakup)
-  // 3. Untuk jenis lain → tampilkan dengan label:
-  //    - FLAT → "Biaya Langganan Flat Bulanan"
-  //    - NON FLAT → "Cucian Non Flat (Perincian Terlampir)"
-  //    - FNB → "Cucian F & B (Perincian Terlampir)"
-  //    - SPOTING → "Spotting / Treatment (Perincian Terlampir)"
-  // 4. Generate nomor invoice via getInvoiceStableNumber
-  // 5. Return HTML lengkap dengan:
-  //    - Kop surat
-  //    - "INVOICE" header
-  //    - Date & Invoice Number
-  //    - Attention To (nama, alamat, kota pelanggan)
-  //    - Detail Invoice (tabel No, Description, Total Amount)
-  //    - Total row
-  //    - TERBILANG (dalam huruf)
-  //    - Payment Information (bank, account name, account number)
-  //    - Signature box (direktur)
+function logout() {
+  currentUserRole = "";
+  isInvoicePaid = false;
+  document.getElementById("loginPage").style.display = "flex";
+  document.getElementById("appContent").style.display = "none";
 }
-```
-
-### 5.22 Generate Kuitansi (baris 917-1093)
-```javascript
-async function buildKuitansiHTML(pel, bln, logoUrl) {
-  // 1. Hitung total tagihan (sama seperti invoice)
-  // 2. Generate nomor kuitansi (= nomor invoice, dipakai bersama)
-  // 3. Tentukan deskripsi berdasarkan tipe pelanggan:
-  //    - RS: "Biaya Cuci Linen mulai tgl. X - Y = Z kg @ Rp.tarif,- (Perincian terlampir)"
-  //    - HOTEL FLAT: "Biaya Cuci Linen Bulan [Bulan] [Tahun]"
-  //    - HOTEL REGULER: "Biaya Cuci Linen Bulan [Bulan] [Tahun] (Perincian Terlampir)"
-  // 4. Return HTML legal portrait (215.9mm × 355.6mm) dengan:
-  //    - Kop surat
-  //    - Tabel: KWITANSI No., TERIMA DARI, SEBESAR (terbilang), UNTUK PEMBAYARAN
-  //    - Box "TERBILANG: Rp X.XXX,-"
-  //    - Payment Transfer info (jika ada)
-  //    - Signature box (Surabaya, [tgl] / [direktur])
-}
-```
-
-### 5.23 Slip Gaji (baris 1095-1180)
-```javascript
-async function viewSlipGaji(kId, mulai, selesai) {
-  // Buka window print slip gaji per karyawan
-}
-async function downloadSlipGaji(kId, mulai, selesai) {
-  // Download slip gaji sebagai HTML
-}
-async function buildSlipGajiHTML(kId, mulai, selesai, logoUrl) {
-  // Return HTML slip gaji:
-  //   - Kop surat
-  //   - "SLIP UPAH KARYAWAN"
-  //   - Info: Nama, Bagian, Periode
-  //   - Tabel: Upah Kerja, Insentif, Lembur, Potongan, Total Diterima
-  //   - Terbilang
-  //   - REKAPITULASI HARIAN: Tanggal, Status, Kg, Ongkos, Hadir, Upah
-}
-```
-
-### 5.24 Hitung Manajemen Keuangan (baris 1196-1339) ⭐ FUNC INTI
-```javascript
-async function hitungMenejemenKeuangan() {
-  showLoading("Menghitung keuangan...");
-  try {
-    // 1. Ambil semua nota & biaya dari Supabase (dengan filter tanggal)
-    // 2. Ambil payment_status untuk cek lunas/belum
-    
-    // 3. Hitung total pendapatan per bulan per pelanggan:
-    const totalInvoiceOf = (pData, bln, arrNota) => {
-      // Untuk FLAT customer:
-      //   - Skip nota FLAT/FLAT ASLI (sudah dicakup flat rate)
-      //   - Tambah flatRate
-      // Untuk REGULER: sum semua nota
-    };
-    
-    // 4. Penjualan = sum totalInvoiceOf semua pelanggan semua bulan
-    // 5. PendapatanLunas = sum yang isLunas=true
-    
-    // 6. Hitung HPP (Harga Pokok Penjualan):
-    const hpp = {
-      gajiKaryawan: sumByKat("GAJI BORONGAN"),
-      listrik: sumByKat("LISTRIK 1") + sumByKat("LISTRIK 2"),
-      gas: sumByKat("GAS"),
-      air: sumByKat("AIR"),
-      chemical: sumByKat("CHEMICAL"),
-      bbm: sumByKat("BBM"),
-      plastik: sumByKat("PLASTIK"),
-      pph: sumByKat("PPH PS 23"),
-    };
-    
-    // 7. Hitung Biaya Adm & Umum:
-    const biayaAdm = {
-      gajiTetap: sumByKat("GAJI TETAP"),
-      makan: sumByKat("MAKAN"),
-      perawatanMesin: sumByKat("PERAWATAN MESIN"),
-      iuranSampah: sumByKat("IURAN SAMPAH"),
-      iuranRT: sumByKat("IURAN RT"),
-      lainLain: sumByKat("LAIN-LAIN"),
-    };
-    
-    // 8. Laba Bersih = Penjualan - HPP - Biaya Adm
-    
-    // 9. Piutang = sum tagihan yang BELUM lunas
-    // 10. Utang = biaya belum lunas + sisa cicilan utang aktif
-    // 11. Kas = PendapatanLunas - biaya yang sudah dibayar
-    // 12. Modal = Kas + Piutang + Peralatan - Utang
-    
-    // 13. Update 8 box keuangan
-    // 14. Render tabel riwayat pengeluaran
-  } finally { hideLoading(); }
-}
-```
-
-### 5.25 Laporan Laba Rugi & Neraca (baris 1341-1430)
-```javascript
-async function tampilkanLaporan() {
-  // 1. Pastikan hitungMenejemenKeuangan sudah jalan
-  // 2. Parse nilai dari 8 box keuangan
-  // 3. Render 2 tabel:
-  //    a. Laporan Laba Rugi:
-  //       - PENJUALAN: Penjualan Jasa
-  //       - HPP: Total HPP
-  //       - LABA KOTOR = Penjualan - HPP
-  //       - BIAYA ADM & UMUM
-  //       - LABA BERSIH = Laba Kotor - Biaya Adm
-  //    b. Neraca:
-  //       - ASET: Kas/Bank + Piutang + Peralatan = Total Aset
-  //       - KEWAJIBAN: Utang Usaha
-  //       - MODAL: Modal Bersih
-  //       - Aset = Kewajiban + Modal
-}
-
-async function cetakLaporan() {
-  // Buka window print laporan
-}
-```
-
-### 5.26 CRUD Biaya Operasional (baris 1432-1510)
-```javascript
-async function simpanBiayaOperasional() {
-  // 1. Validasi: tgl, kategori, nominal > 0
-  // 2. Jika kategori "LAIN-LAIN" → ambil dari input custom
-  // 3. Insert ke Supabase tabel biaya
-  // 4. Recalc keuangan
-}
-async function bukaEditBiaya(id)     // Buka modal edit
-async function simpanEditBiaya()     // Update ke Supabase
-async function hapusBiaya(id)        // Delete dengan konfirmasi
-async function tandaiLunasBiaya(id)  // Set lunas=true
-```
-
-### 5.27 Detail & Edit Nota (baris 1512-1610)
-```javascript
-function bukaModalDetail(id) {
-  // Ambil nota dari localStorage, tampilkan item + subtotal + total
-}
-
-async function bukaModalEditLinen(id) {
-  // 1. Ambil nota dari Supabase
-  // 2. Sync ke localStorage cache
-  // 3. Jika RS: tampilkan input berat KG
-  // 4. Jika HOTEL: render daftar linen (valid + legacy)
-  //    - Legacy item = item lama yang tidak lagi valid di jenis nota
-  //    - Tetap ditampilkan dengan highlight kuning "⚠ ITEM LAMA"
-  // 5. Pasang event listener untuk preview total realtime
-}
-
-async function simpanPerubahanQtyNota() {
-  // 1. Ambil nota dari Supabase
-  // 2. Branch tipe pelanggan:
-  //    a. HOTEL FLAT + jenis FLAT: items disimpan dengan basePrice=0, subtotal=0
-  //    b. RS: total = berat × tarifRS, items = [{Cucian RS, kg, KG, tarifRS, total}]
-  //    c. Lainnya: items = linen yang qty > 0 dengan harga terbaru
-  // 3. Update Supabase
-  // 4. Refresh data + re-render
-}
-```
-
-### 5.28 Master Linen (baris 1612-1664)
-```javascript
-function renderMasterLinenTable()    // Render tabel master linen dengan inline edit
-async function tambahLinen()         // Insert ke master_linen
-async function updateLinen(id)       // Update nama linen
-async function hapusLinen(id)        // Delete dengan konfirmasi
-```
-
-### 5.29 Master Jenis Nota (baris 1666-1714)
-```javascript
-function renderMasterJenisNotaTable()  // Render dengan inline edit
-async function addMasterJenisNota() {
-  // Insert: { name, multiplier, for_flat, for_reguler }
-}
-async function updateMasterJenisNota(idx)  // Update by name (primary key)
-async function deleteMasterJenisNota(idx)  // Delete dengan konfirmasi
-```
-
-### 5.30 Atur Linen per Jenis Nota (baris 1716-1795)
-```javascript
-function bukaModalAturLinenJenisNota() {
-  // 1. Cek admin (akses ditolak jika user)
-  // 2. Validasi: masterLinen & jenisNotaList tidak kosong
-  // 3. Populate dropdown jenis nota
-  // 4. Tampilkan modal
-}
-
-function renderCheckboxLinen() {
-  // Render semua master linen sebagai checkbox
-  // Centang yang sudah ada di jData.linenIds
-}
-
-async function simpanAturLinen() {
-  // Update linen_ids (array) di tabel jenis_nota
-  // Update state lokal + localStorage
-  // Re-render form input linen
-}
-```
-
-### 5.31 Master Pelanggan (baris 1797-2115)
-```javascript
-function renderDaftarPelanggan() {
-  // Smart search: filter by name / kode
-  // Render card per pelanggan dengan tombol Edit & Hapus
-}
-
-async function tambahPelangganBaru() {
-  // Insert: { nama, kode, tipe, billing_system, flat_rate, tarif_rs, alamat, kota }
-  // Kode auto-generate jika kosong
-}
-
-function autoIsiKodeBaru() {
-  // Auto-isi kode pelanggan dari nama (jika input kode kosong)
-}
-
-async function hapusPelanggan(id) {
-  // Delete dengan konfirmasi
-  // Hapus juga harga pelanggan terkait
-}
-
-async function bukaModalEditPelanggan(id) {
-  // 1. Isi form edit dengan data pelanggan
-  // 2. Toggle input flat rate / tarif RS berdasarkan tipe & billing
-  // 3. Set counter awal invoice
-  // 4. Render tabel harga linen:
-  //    - Baris yang sudah ada di daftar (sorted by urutan)
-  //    - Baris yang belum masuk daftar
-  //    - Checkbox "aktif" untuk toggle linen ini di daftar pelanggan
-  //    - Input harga dengan formatCurrencyInput
-  //    - Draggable untuk urutan
-  // 5. Inisialisasi drag & drop
-}
-
-async function simpanDetailPelanggan() {
-  // 1. Update tabel pelanggan
-  // 2. Hapus + insert ulang harga_pelanggan
-  // 3. Simpan urutan linen per-pelanggan ke linen_pelanggan
-  // 4. Set counter awal invoice jika diisi
-  // 5. Refresh data
-}
-```
-
-### 5.32 Master Karyawan (baris 2137-2196)
-```javascript
-function renderMasterKaryawanTable()  // Render tabel karyawan
-async function tambahKaryawan()       // Insert { nama, bagian, persentase }
-function openEditKaryawanModal(id)    // Buka modal edit
-async function updateKaryawanFromModal()  // Update Supabase
-async function hapusKaryawan(id)      // Delete dengan konfirmasi
-```
-
-### 5.33 Pengaturan Global & Kop Surat (baris 2198-2256)
-```javascript
-async function simpanPengaturanGlobal() {
-  // Update tabel pengaturan (id=1):
-  //   - tarif_internal_hotel, ongkos_per_kg
-  //   - rekening_name, rekening_no, bank
-  //   - direktur, peralatan
-}
-
-async function simpanKopSurat() {
-  // Update tabel kop (id=1):
-  //   - nama, alamat, telepon, email, kontak
-  // Jika ada file logo baru:
-  //   - Validasi ukuran ≤ 2MB
-  //   - Simpan ke IndexedDB
-}
-
-async function handleLogoUpload(input) {
-  // Preview logo sebelum simpan
-}
-
-async function previewLogoFromDB() {
-  // Tampilkan logo dari IndexedDB
-}
-```
-
-### 5.34 Absensi (baris 2258-2288)
-```javascript
-function renderAbsensiTable() {
-  // Untuk setiap karyawan, tampilkan dropdown status (Hadir/Izin/Alpa/Libur)
-  // Default "Hadir" jika belum ada absensi
-}
-
-async function simpanAbsensi() {
-  // Untuk setiap karyawan:
-  //   - Delete absensi lama di tanggal tsb
-  //   - Insert absensi baru
-}
-```
-
-### 5.35 Hitung Gaji (baris 2290-2360) ⭐ FUNC INTI
-```javascript
-function hitungKgHarian(transaksiPeriode, tarifInternal, tglMulai, tglSelesai) {
-  // Hitung total KG per tanggal:
-  //   - HOTEL FLAT + jenis FLAT → skip (sudah dicakup flat)
-  //   - RS → kg = sum qty items
-  //   - HOTEL → kg = total / tarifInternal (estimasi KG dari rupiah)
-}
-
-async function tampilkanListGajiBaru() {
-  // 1. Filter DB_NOTA dalam periode
-  // 2. Hitung kgHarian
-  // 3. Ambil ongkos per kg dari pengaturan
-  // 4. Ambil data gaji tersimpan (untuk insentif/lembur/potongan)
-  // 5. Untuk setiap karyawan:
-  //    - Loop setiap hari dalam periode
-  //    - Cek absensi: jika "Hadir" → upah = (kg × ongkos) / jumlahKaryawanHadir
-  //    - Akumulasi totalUpah
-  //    - totalDiterima = totalUpah + insentif + lembur - potongan
-  // 6. Render tabel rekap + tombol Slip/Download/Edit
-}
-```
-
-### 5.36 Edit Gaji (baris 2362-2392)
-```javascript
-function editGajiKaryawan(kId, mulai, selesai) {
-  // Set _gajiAktif = { karyawanId, periodeMulai, periodeSelesai, gajiId }
-  // Buka modal edit insentif/lembur/potongan
-}
-
-async function simpanEditGajiBaru() {
-  // Jika gajiId ada → update, jika tidak → insert
-}
-```
-
-### 5.37 Backup System (baris 2394-2480)
-```javascript
-function getBackupHistory()         // Ambil array bulan yang sudah di-backup
-function renderBackupStatus()       // Render tabel status backup per bulan
-
-async function backupBulan(bln) {
-  // 1. Konfirmasi user
-  // 2. Backup semua key localStorage ke satu file JSON
-  // 3. Download file: pelangi_backup_YYYY-MM.json
-  // 4. Hapus data bulan tsb dari Supabase (nota, biaya, absensi, gaji)
-  // 5. Hapus dari localStorage
-  // 6. Catat ke backup_history
-}
-
-async function backupSemuaBulanBelum() {
-  // Backup semua bulan yang belum pernah di-backup sekaligus
-}
-
-async function backupDanBersihkan() {
-  // Backup SEMUA data + hapus SEMUA transaksi (master tetap aman)
-}
-
-async function exportAllData() {
-  // Export semua 18 tabel Supabase ke satu file JSON
-}
-
-async function handleFileImport(input) {
-  // 1. Parse JSON
-  // 2. Deteksi format:
-  //    a. Format exportAllData (langsung tabel Supabase) → upsert langsung
-  //    b. Format backupBulan (DB_XXX keys) → transform dulu, lalu upsert
-  // 3. Sync ke localStorage
-  // 4. Reload page
-}
-```
-
-### 5.38 Bersihkan Nota Rusak (baris 2568-2586)
-```javascript
-async function bersihkanNotaRusak() {
-  // 1. Ambil semua nota dari Supabase
-  // 2. Filter: nota tanpa items atau items kosong
-  // 3. Delete nota rusak tersebut
-  // 4. Bersihkan juga dari localStorage cache
-}
-```
-
-### 5.39 Peringatan Backup (baris 2588-2598)
-```javascript
-function cekPeringatanBackup() {
-  // Cek apakah ada transaksi bulan lalu yang belum di-backup
-  // Jika ya → tampilkan toast warning
-}
-```
-
-### 5.40 Manajemen Utang (baris 2600-2680)
-```javascript
-function getUtangList() / saveUtangList(list)
-
-async function simpanUtang() {
-  // 1. Validasi: nama, dari, sampai, cicilan > 0
-  // 2. Validasi: sampai >= dari
-  // 3. Hitung total bulan = (thn2-thn1)*12 + (bln2-bln1) + 1
-  // 4. Insert ke Supabase: { nama, dari, sampai, cicilan, keterangan, sisa_bulan, status: AKTIF }
-}
-
-function renderDaftarUtang() {
-  // Smart search by nama / keterangan
-  // Render tabel dengan kolom: Nama, Periode, Cicilan/Bulan, Sisa Bulan, Sisa Total, Status, Aksi
-}
-
-async function bayarCicilan(id) {
-  // 1. Konfirmasi
-  // 2. Insert ke tabel biaya: kategori="CICILAN UTANG", nominal=cicilan, lunas=true
-  // 3. Update utang: sisa_bulan - 1, status = "LUNAS" jika sisa = 0
-  // 4. Refresh data + recalc keuangan
-}
-```
-
-### 5.41 Navigasi Tab (baris 2682-2730)
-```javascript
-const TAB_CATEGORIES = {
-  transaksi: { label: "TRANSAKSI", tabs: [["tab-nota", "📝 Input Nota"], ["tab-rekap", "🔍 Riwayat Nota"]] },
-  tagihan:   { label: "TAGIHAN",   tabs: [["tab-invoice", "🧾 Invoice"], ["tab-kuitansi", "📄 Kuitansi"]] },
-  keuangan:  { label: "KEUANGAN",  tabs: [["tab-omset", "📊 Dashboard"], ["tab-laporan", "📋 Laporan"], ["tab-utang", "📉 Utang"], ["tab-gaji", "💵 Gaji"]] },
-  sistem:    { label: "SISTEM",    tabs: [["tab-master", "🛠️ Master Data"], ["tab-absen", "📅 Absensi"], ["tab-backup", "💾 Backup"]] },
-};
-
-function switchCategory(cat) {
-  // 1. Update active state + aria-selected untuk tombol kategori
-  // 2. Render subtab dinamis berdasarkan TAB_CATEGORIES[cat]
-  // 3. Auto-switch ke subtab pertama
-}
-
-async function switchTab(tabId) {
-  // 1. Sembunyikan semua .tab-content
-  // 2. Tampilkan tab aktif
-  // 3. Update aria-selected + active untuk .tab-btn
-  // 4. Trigger fungsi inisialisasi per tab:
-  //    - tab-rekap → cariNotaSistem()
-  //    - tab-gaji → tampilkanListGajiBaru()
-  //    - tab-omset → hitungMenejemenKeuangan()
-  //    - tab-utang → renderDaftarUtang()
-  //    - tab-absen → renderAbsensiTable()
-  //    - tab-backup → renderBackupStatus()
-  //    - tab-laporan → tampilkanLaporan()
-  //    - tab-master → renderDaftarPelanggan() + renderMasterLinenTable() + renderMasterJenisNotaTable()
-  // 5. Setup FAB untuk tab aktif
-}
-```
-
-### 5.42 FAB Management (baris 2732-2770)
-```javascript
-const FAB_CONFIG = {
-  "tab-nota":     { icon: "✓", label: "Simpan",            onclick: "simpanNotaSistem()",         variant: "success" },
-  "tab-rekap":    { icon: "🔍", label: "Cari",              onclick: "cariNotaSistem()",            variant: "primary" },
-  "tab-invoice":  { icon: "🖱️", label: "Hitung Invoice",    onclick: "hitungDanAmbilInvoice()",     variant: "primary" },
-  "tab-kuitansi": { icon: "🖨️", label: "Cetak Kuitansi",    onclick: "generateKuitansi()",          variant: "success" },
-  "tab-omset":    { icon: "💸", label: "Catat Pengeluaran", onclick: "focusInputPengeluaran()",     variant: "danger" },
-  "tab-utang":    { icon: "✓", label: "Simpan Utang",       onclick: "simpanUtang()",               variant: "success" },
-  "tab-master":   { icon: "👤", label: "Tambah Pelanggan",  onclick: "focusInputPelangganBaru()",   variant: "success" },
-  "tab-absen":    { icon: "💾", label: "Simpan Absensi",    onclick: "simpanAbsensi()",             variant: "success" },
-  "tab-backup":   { icon: "📤", label: "Export Semua",      onclick: "exportAllData()",             variant: "success" },
-  // tab-laporan & tab-gaji: tidak ada FAB (multiple CTA)
-};
-
-function setupFAB(tabId) {
-  // Set icon, label, variant, onclick sesuai tab aktif
-  // Hidden jika tidak ada config (tab-laporan, tab-gaji)
-}
-```
-
-### 5.43 Smart Search Pattern (baris 2772-2845)
-Aplikasi mengganti tombol "Semua" dengan inline clear (×) untuk UX lebih baik:
-
-```javascript
-function onCariPelangganInput()     // Auto-filter riwayat nota
-function clearCariPelanggan()       // Clear input + re-render
-function onCariPelangganMasterInput() // Auto-filter daftar pelanggan
-function onCariUtangInput()         // Auto-filter daftar utang
-function onFilterExpInput()         // Auto-filter pengeluaran
-function clearFilterExpField(field) // Clear field filter spesifik
-```
-
-Setiap input punya tombol × yang muncul hanya jika input tidak kosong (`classList.add("visible")`).
-
-### 5.44 Empty State Helper (baris 2847-2854)
-```javascript
-function emptyRowHTML(colspan, message, variant = "info") {
-  return `<tr><td colspan="${colspan}" style="padding:0;border:0;">
-    <div class="info-box ${variant === "info" ? "" : variant}" style="margin:0;border-radius:0;">
-      <span>ℹ️</span><span>${message}</span>
-    </div>
-  </td></tr>`;
-}
-```
-Render pesan kosong yang ramah dengan ikon dan styling.
-
-### 5.45 Modal Close Handlers (baris 2856-2858)
-```javascript
-function tutupModal(id) { document.getElementById(id).style.display = "none"; }
-document.querySelectorAll(".modal").forEach((m) => {
-  m.addEventListener("click", (e) => {
-    if (e.target === m) m.style.display = "none";   // Klik backdrop untuk tutup
-  });
-});
 ```
 
 ---
 
-## 6. Perhitungan & Formula
+## 8. script.js Bagian 3 — Transaksi Nota
 
-### 6.1 Total Nota per Transaksi
+### 8.1 Render Dropdown Pelanggan
 
-#### Untuk Pelanggan RS (Kiloan)
-```
-total = berat (KG) × tarifRS
-items = [{ idMaster: 0, name: "Cucian RS (Kiloan)", qty: berat, unit: "KG", basePrice: tarifRS, subtotal: total }]
+```javascript
+function renderPelangganDropdowns() {
+  // Update 3 dropdown sekaligus: nota, invoice, kuitansi
+  ["pelangganSelect", "invoicePelangganSelect", "kuitansiPelangganSelect"].forEach(id => {
+    const sel = document.getElementById(id);
+    const prev = sel.value; // Simpan nilai sebelumnya
+    sel.innerHTML = "";
+    pelangganList.forEach(p => {
+      sel.innerHTML += `<option value="${p.name}">
+        ${p.type === "HOTEL" ? "🏨" : "🏥"} ${p.name}
+      </option>`;
+    });
+    // Pertahankan pilihan sebelumnya jika masih ada
+    if (prev && pelangganList.find(p => p.name === prev)) sel.value = prev;
+  });
+  cekTipePelangganInput();
+}
 ```
 
-#### Untuk Pelanggan HOTEL Reguler
-```
-Untuk setiap linen dengan qty > 0:
-  hargaSatuan = hargaPelanggan[pelangganId][linenId] × multiplier(jenisNota)
-  subtotal = qty × hargaSatuan
-total = sum(subtotal)
+---
+
+### 8.2 `cekTipePelangganInput()` — Tampil Form Sesuai Tipe
+
+```javascript
+function cekTipePelangganInput() {
+  const pData = pelangganList.find(p => p.name === document.getElementById("pelangganSelect").value);
+
+  if (pData && pData.type === "RS") {
+    // Rumah Sakit: tampilkan form kiloan, sembunyikan form hotel
+    document.getElementById("formHotel").style.display = "none";
+    document.getElementById("formRS").style.display = "block";
+    document.getElementById("jenisNota").innerHTML = '<option value="KILOAN">KILOAN</option>';
+    document.getElementById("jenisNota").disabled = true;
+    document.getElementById("infoTarifRS").innerText =
+      `🏥 ${pData.name}: Rp ${(pData.tarifRS||0).toLocaleString("id-ID")} / KG`;
+  } else {
+    // Hotel: tampilkan form linen
+    document.getElementById("formHotel").style.display = "block";
+    document.getElementById("formRS").style.display = "none";
+    renderJenisNotaDropdown();
+  }
+  renderFormLinenInput();
+}
 ```
 
-#### Untuk Pelanggan HOTEL FLAT + Jenis Nota "FLAT"
-```
-total = 0   (gratis, sudah dicakup flat rate bulanan)
-items.forEach(it => it.subtotal = 0)
+---
+
+### 8.3 `renderJenisNotaDropdown()` — Filter Jenis Nota
+
+```javascript
+function renderJenisNotaDropdown(selected = null) {
+  const pel = pelangganList.find(p => p.name === document.getElementById("pelangganSelect").value);
+  const sel = document.getElementById("jenisNota");
+  const prev = selected || sel.value;
+  sel.innerHTML = "";
+
+  if (pel && pel.type === "RS") {
+    sel.innerHTML = '<option value="KILOAN">KILOAN</option>';
+    sel.disabled = true; return;
+  }
+
+  sel.disabled = false;
+  // Filter: FLAT customer hanya tampilkan jenis yang forFlat=true, dst.
+  const filtered = pel && pel.type === "HOTEL"
+    ? jenisNotaList.filter(j => pel.billingSystem === "FLAT" ? j.forFlat : j.forReguler)
+    : jenisNotaList;
+
+  filtered.forEach(j => {
+    sel.innerHTML += `<option value="${j.name}" ${prev === j.name ? "selected" : ""}>
+      ${j.name} (${j.multiplier}x)
+    </option>`;
+  });
+}
 ```
 
-### 6.2 Harga Satuan Linen
+---
+
+### 8.4 `getHargaPerPelanggan(pelangganId, linenId, multiplier)` — Kalkulasi Harga
+
 ```javascript
 function getHargaPerPelanggan(pelangganId, linenId, multiplier) {
   const hrg = hargaPelanggan[pelangganId];
   if (hrg && hrg[linenId] !== undefined && hrg[linenId] !== null) {
     return Math.floor(hrg[linenId] * multiplier);
+    // Harga dasar × multiplier jenis nota
+    // Contoh: Sheet King = Rp 5.000, jenis SPOTING (2x) → Rp 10.000
   }
-  return 0;  // Default 0 jika belum diatur
+  return 0; // Harga belum diset → tampil 0
 }
 ```
 
-### 6.3 Multiplier Jenis Nota
-| Jenis Nota | Multiplier | Keterangan |
-|------------|------------|------------|
-| REGULER | 1x | Tarif normal |
-| FLAT | 1x | Sudah dalam flat rate |
-| FLAT ASLI | 1x | Sudah dalam flat rate |
-| SPOTING | 2x | Treatment noda (double) |
-| GUEST LAUNDRY | 1x | Cucian tamu |
-| NON FLAT | 1.5x | Cucian di luar paket flat |
-| FNB | 1.2x | Linen F&B |
+---
 
-### 6.4 Total Invoice Bulanan
-```
-totalInvoice = flatRate (jika FLAT customer) + sum(nota.total untuk jenis non-FLAT)
-```
+### 8.5 `renderFormLinenInput()` — Build Tabel/Card Linen
 
-### 6.5 Hitung KG Harian untuk Gaji
 ```javascript
-function hitungKgHarian(transaksiPeriode, tarifInternal, tglMulai, tglSelesai) {
-  // kgHarian[tgl] = sum(kg dari setiap nota di tanggal tsb)
-  // - HOTEL FLAT + jenis FLAT → skip (sudah dicakup flat rate)
-  // - RS → kg = sum(qty items)
-  // - HOTEL → kg = total / tarifInternal (estimasi KG dari rupiah)
-  //   * tarifInternal default 7000 (dari pengaturan)
+function renderFormLinenInput() {
+  const jName = document.getElementById("jenisNota").value;
+  const jData = jenisNotaList.find(j => j.name === jName);
+  const mult  = jData ? jData.multiplier : 1;
+
+  const pelName = document.getElementById("pelangganSelect").value;
+  const pelData = pelangganList.find(p => p.name === pelName);
+  const pelId   = pelData ? pelData.id : null;
+
+  if (!pelId) {
+    // Tampilkan pesan kosong
+    return;
+  }
+
+  // Ambil linen aktif untuk pelanggan (sorted by urutan)
+  let linenList = getLinenPelanggan(pelId);
+
+  // Filter & urutkan berdasarkan konfigurasi jenis nota (jika ada)
+  if (jData?.linen_config?.length > 0) {
+    const allowed  = new Set(jData.linen_config.map(c => c.id));
+    const orderMap = Object.fromEntries(jData.linen_config.map(c => [c.id, c.urutan]));
+    linenList = linenList
+      .filter(entry => allowed.has(entry.linenId))
+      .sort((a, b) => (orderMap[a.linenId]??999) - (orderMap[b.linenId]??999));
+  }
+
+  // Render tabel (desktop) + card-list (mobile)
+  linenList.forEach((entry, idx) => {
+    const item       = masterLinen.find(m => m.id === entry.linenId);
+    if (!item) return;
+    const hargaSatuan = getHargaPerPelanggan(pelId, item.id, mult);
+
+    // Baris tabel
+    tbody.innerHTML += `
+      <tr>
+        <td>${idx + 1}</td>
+        <td><strong>${item.name}</strong></td>
+        <td>${fmtRp(hargaSatuan)}</td>
+        <td>
+          <input type="number" class="input-qty linen-item-qty"
+            data-id="${item.id}" data-name="${item.name}"
+            data-price="${hargaSatuan}" value="0" min="0">
+        </td>
+      </tr>`;
+
+    // Card mobile
+    cardList.innerHTML += `
+      <div class="linen-card-item">
+        <div class="info">
+          <div class="name">${item.name}</div>
+          <div class="price">${fmtRp(hargaSatuan)}</div>
+        </div>
+        <input type="number" class="input-qty linen-item-qty"
+          data-id="${item.id}" data-name="${item.name}"
+          data-price="${hargaSatuan}" value="0" min="0">
+      </div>`;
+  });
 }
 ```
 
-### 6.6 Upah Harian Karyawan
-```
-upahHarian = (kgHarian[tgl] × ongkosPerKg) / jumlahKaryawanHadir
+---
 
-Kondisi:
-- Hanya karyawan dengan status "Hadir" yang dapat upah
-- Jika absen (Izin/Alpa/Libur) → upah = 0
-- ongkosPerKg default 1200 (dari pengaturan)
-```
+### 8.6 `simpanNotaSistem()` — Simpan Transaksi
 
-### 6.7 Total Gaji Diterima
-```
-totalDiterima = totalUpah + insentif + lembur - potongan
-```
-
-### 6.8 Formula Keuangan
-
-#### HPP (Harga Pokok Penjualan)
-```
-HPP = GAJI BORONGAN + LISTRIK 1 + LISTRIK 2 + GAS + AIR + CHEMICAL + BBM + PLASTIK + PPH PS 23
-```
-
-#### Biaya Administrasi & Umum
-```
-Adm = GAJI TETAP + MAKAN + PERAWATAN MESIN + IURAN SAMPAH + IURAN RT + LAIN-LAIN
-```
-
-#### Laba Bersih
-```
-LabaBersih = Penjualan - HPP - BiayaAdm
-```
-
-#### Piutang Usaha
-```
-Piutang = sum(tagihan bulanan yang BELUM lunas untuk semua pelanggan semua bulan)
-```
-
-#### Utang Usaha
-```
-Utang = sum(biaya dengan lunas=false) + sum(sisaBulan × cicilan untuk utang AKTIF)
-```
-
-#### Kas / Bank
-```
-Kas = PendapatanLunas - BiayaYangSudahDibayar
-```
-
-#### Modal Bersih
-```
-Modal = Kas + Piutang + Peralatan - Utang
-```
-
-### 6.9 Total Invoice per Bulan per Pelanggan
 ```javascript
-const totalInvoiceOf = (pData, bln, arrNota) => {
-  const isFlat = pData.type === "HOTEL" && pData.billingSystem === "FLAT";
+async function simpanNotaSistem() {
+  const btn = document.getElementById('btnSimpanNota');
+  setBtnLoading(btn, true);
+  try {
+    const tgl = document.getElementById("notaTanggal").value;
+    if (!tgl) { toast("Pilih tanggal!", "warning"); return; }
+
+    const pelName = document.getElementById("pelangganSelect").value;
+    const pData   = pelangganList.find(p => p.name === pelName);
+    const jenis   = document.getElementById("jenisNota").value;
+    let items = [], total = 0;
+
+    // ─── CASE 1: Pelanggan RS → berbasis KG ─────────────────────────────
+    if (pData && pData.type === "RS") {
+      const berat = parseFloat(document.getElementById("beratRS").value) || 0;
+      if (berat <= 0) { toast("Berat harus lebih dari 0 KG!", "warning"); return; }
+      total = Math.floor(berat * pData.tarifRS);
+      // Contoh: 50 KG × Rp 7.000/KG = Rp 350.000
+      items.push({ idMaster: 0, name: "Cucian RS (Kiloan)", qty: berat, unit: "KG",
+                   basePrice: pData.tarifRS, subtotal: total });
+    }
+
+    // ─── CASE 2: Hotel → berbasis jumlah linen (pcs) ────────────────────
+    else {
+      let hasNegative = false;
+      document.querySelectorAll(".linen-item-qty").forEach(inp => {
+        const qty = parseInt(inp.value) || 0;
+        if (qty < 0) hasNegative = true;
+        if (qty > 0) {
+          const price = parseInt(inp.getAttribute("data-price"));
+          const name  = inp.getAttribute("data-name");
+          const idMaster = parseInt(inp.getAttribute("data-id"));
+          const sub = Math.floor(qty * price);
+          total += sub;
+          items.push({ idMaster, name, qty, unit: "Pcs", basePrice: price, subtotal: sub });
+        }
+      });
+      if (hasNegative) { toast("Jumlah item tidak boleh negatif!", "warning"); return; }
+      if (total <= 0)  { toast("Masukkan jumlah item!", "warning"); return; }
+
+      // Khusus FLAT customer + jenis nota FLAT → total = 0 (sudah cover flat rate)
+      if (pData?.billingSystem === "FLAT" && jenis === "FLAT") {
+        total = 0;
+        items.forEach(it => it.subtotal = 0);
+        toast("Nota FLAT disimpan (total 0).", "info", 2500);
+      }
+    }
+
+    // ─── Simpan ke Supabase ──────────────────────────────────────────────
+    const notaId = generateNotaId(tgl);
+    const { error } = await db.from("nota").insert([{
+      nota_id: notaId, tanggal: tgl, pelanggan_id: pData.id,
+      jenis, total, items: JSON.parse(JSON.stringify(items))
+    }]);
+    if (error) { toast("Gagal menyimpan nota.", "error"); return; }
+
+    toast(`Transaksi ${notaId} berhasil!`);
+    // Reset form
+    document.getElementById("beratRS").value = "";
+    document.querySelectorAll(".linen-item-qty").forEach(i => i.value = 0);
+
+    // Refresh data & UI
+    await refreshDataSistem();
+    await cariNotaSistem();
+    await hitungMenejemenKeuangan();
+
+  } finally { setBtnLoading(btn, false); }
+}
+```
+
+---
+
+### 8.7 `cariNotaSistem()` — Cari & Tampilkan Riwayat Nota
+
+```javascript
+async function cariNotaSistem() {
+  const tgl       = document.getElementById("cariTanggal").value;
+  const pelFilter = (document.getElementById("cariPelanggan").value || "").toLowerCase().trim();
+
+  // Query Supabase dengan filter opsional
+  let query = db.from("nota").select("*")
+    .order("tanggal", { ascending: true })
+    .order("id", { ascending: true });
+  if (tgl) query = query.eq("tanggal", tgl);
+  const { data: notaData } = await query;
+
+  let hasil = notaData || [];
+
+  // Filter nama pelanggan di sisi klien
+  if (pelFilter) {
+    const mapNama = {};
+    pelangganList.forEach(p => mapNama[p.id] = p.name);
+    hasil = hasil.filter(n => (mapNama[n.pelanggan_id] || "").toLowerCase().includes(pelFilter));
+  }
+
+  // Render tabel
+  const tbody = document.getElementById("tabelRiwayatNota");
+  tbody.innerHTML = hasil.map(nota => {
+    const namaPel = mapNama[nota.pelanggan_id] || "?";
+    let aksi = `<button onclick="bukaModalDetail(${nota.id})">Detail</button>
+                <button onclick="bukaModalEditLinen(${nota.id})">Edit</button>`;
+    if (currentUserRole === "admin")
+      aksi += `<button onclick="hapusNotaDariInvoice(${nota.id},'rekap')">Hapus</button>`;
+    return `<tr>
+      <td><strong>${nota.nota_id}</strong></td>
+      <td>${nota.tanggal}</td><td>${namaPel}</td>
+      <td>${nota.jenis}</td>
+      <td><strong>${fmtRp(nota.total)}</strong></td>
+      <td>${aksi}</td>
+    </tr>`;
+  }).join("");
+}
+```
+
+---
+
+### 8.8 `hitungDanAmbilInvoice()` — Kompilasi Invoice Bulanan
+
+```javascript
+function hitungDanAmbilInvoice() {
+  const pel = document.getElementById("invoicePelangganSelect").value;
+  const bln = document.getElementById("invoiceBulanSelect").value;
+
+  const dbStore = JSON.parse(localStorage.getItem("DB_NOTA") || "[]");
+  const semua   = dbStore.filter(n => n.pelanggan === pel && n.tanggal.startsWith(bln));
+
+  const pData         = pelangganList.find(p => p.name === pel);
+  const isFlatCustomer = pData?.type === "HOTEL" && pData.billingSystem === "FLAT";
+  const invoiceTerkunci = isInvoiceLocked(pel, bln);
+
+  let totalNonFlat = 0;
+  semua.forEach(nota => {
+    if (!invoiceTerkunci) hitungUlangNota(nota); // Recalculate harga jika invoice belum dikunci
+
+    const isNotaFlat = nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+    if (isFlatCustomer && isNotaFlat) {
+      nota.total = 0; // Nota FLAT tidak dijumlahkan (sudah cover flat rate)
+    } else {
+      totalNonFlat += nota.total;
+    }
+  });
+
+  // Hitung grand total
+  const flatRate  = isFlatCustomer ? (pData.flatRate || 0) : 0;
+  const grandTotal = Math.floor(flatRate + totalNonFlat);
+  // flatRate = biaya langganan bulanan
+  // totalNonFlat = nota non-flat (SPOTING, FNB, NON FLAT)
+}
+```
+
+---
+
+### 8.9 `hitungUlangNota(nota)` — Recalculate Harga Nota
+
+```javascript
+function hitungUlangNota(nota) {
+  const jData = jenisNotaList.find(j => j.name === nota.jenis);
+  const mult  = jData ? jData.multiplier : 1;
+  const pData = pelangganList.find(p => p.name === nota.pelanggan);
   let total = 0;
-  arrNota
-    .filter(n => n.pelanggan_id === pData.id && n.tanggal.startsWith(bln))
-    .forEach(nota => {
-      // Skip FLAT/FLAT ASLI jika pelanggan FLAT (sudah dicakup flat rate)
-      if (isFlat && (nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI")) return;
-      total += nota.total || 0;
+
+  nota.items.forEach(it => {
+    if (it.idMaster !== 0) { // Bukan RS
+      const m = masterLinen.find(l => l.id === it.idMaster);
+      if (m && pData) it.basePrice = getHargaPerPelanggan(pData.id, it.idMaster, mult);
+    } else { // RS
+      if (pData?.type === "RS") it.basePrice = pData.tarifRS;
+    }
+    it.subtotal = Math.floor((it.qty || 0) * it.basePrice);
+    total += it.subtotal;
+  });
+  nota.total = total;
+}
+```
+
+---
+
+## 9. script.js Bagian 4 — Keuangan & Laporan
+
+### 9.1 `hitungMenejemenKeuangan()` — Kalkulasi Keuangan Lengkap
+
+```javascript
+async function hitungMenejemenKeuangan() {
+  showLoading("Menghitung keuangan...");
+  try {
+    // Ambil nota dari Supabase (data terbaru)
+    const { data: dbNota } = await db.from("nota").select("*");
+
+    // Ambil biaya dengan filter periode (dari UI)
+    let biayaQuery = db.from("biaya").select("*");
+    if (filterMulai)  biayaQuery = biayaQuery.gte("tanggal", filterMulai);
+    if (filterSelesai) biayaQuery = biayaQuery.lte("tanggal", filterSelesai);
+    const { data: dbBiaya } = await biayaQuery;
+
+    // Ambil payment status
+    const { data: paymentStatusData } = await db.from("payment_status").select("*");
+    const paymentStatus = {};
+    paymentStatusData.forEach(ps => paymentStatus[ps.key] = ps.is_paid);
+
+    // ── Helper: total invoice per pelanggan per bulan ──────────────────
+    const totalInvoiceOf = (pData, bln, arrNota) => {
+      const isFlat = pData.type === "HOTEL" && pData.billingSystem === "FLAT";
+      let total = 0;
+      arrNota.filter(n => n.pelanggan_id === pData.id && n.tanggal.startsWith(bln))
+        .forEach(nota => {
+          if (isFlat && (nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI")) return;
+          total += nota.total || 0;
+        });
+      if (isFlat) total += pData.flatRate || 0;
+      return total;
+    };
+
+    // ── Kumpulkan semua bulan yang ada transaksi ───────────────────────
+    const bulanSet = new Set();
+    dbNota.forEach(nota => { if (nota.tanggal) bulanSet.add(nota.tanggal.substring(0, 7)); });
+
+    // ── Hitung total pendapatan & pendapatan lunas ─────────────────────
+    let totalPendapatan = 0, pendapatanLunas = 0;
+    pelangganList.forEach(p => {
+      bulanSet.forEach(bln => {
+        const tagihan = totalInvoiceOf(p, bln, dbNota);
+        if (tagihan > 0) {
+          totalPendapatan += tagihan;
+          if (paymentStatus[getLockKey(p.name, bln)]) pendapatanLunas += tagihan;
+        }
+      });
     });
-  // Tambah flat rate jika pelanggan FLAT
-  if (isFlat) total += pData.flatRate || 0;
-  return total;
+
+    // ── Hitung HPP ────────────────────────────────────────────────────
+    const sumByKat = (kat) =>
+      (dbBiaya||[]).filter(b => b.kategori === kat).reduce((s,b) => s + (b.nominal||0), 0);
+
+    const hpp = {
+      gajiKaryawan: sumByKat("GAJI BORONGAN"),
+      listrik:      sumByKat("LISTRIK 1") + sumByKat("LISTRIK 2"),
+      gas:          sumByKat("GAS"),
+      air:          sumByKat("AIR"),
+      chemical:     sumByKat("CHEMICAL"),
+      bbm:          sumByKat("BBM"),
+      plastik:      sumByKat("PLASTIK"),
+      pph:          sumByKat("PPH PS 23"),
+    };
+    const totalHPP = Object.values(hpp).reduce((a,b) => a+b, 0);
+
+    // ── Hitung Biaya Administrasi & Umum ─────────────────────────────
+    const biayaAdm = {
+      gajiTetap:      sumByKat("GAJI TETAP"),
+      makan:          sumByKat("MAKAN"),
+      perawatanMesin: sumByKat("PERAWATAN MESIN"),
+      iuranSampah:    sumByKat("IURAN SAMPAH"),
+      iuranRT:        sumByKat("IURAN RT"),
+      lainLain:       sumByKat("LAIN-LAIN"),
+    };
+    const totalAdm = Object.values(biayaAdm).reduce((a,b) => a+b, 0);
+
+    // ── Rumus utama ───────────────────────────────────────────────────
+    const penjualan = totalPendapatan;
+    const labaBersih = penjualan - totalHPP - totalAdm;
+    //   Laba Kotor  = Penjualan - HPP
+    //   Laba Bersih = Laba Kotor - Biaya Adm
+
+    // ── Piutang = tagihan yang BELUM lunas ────────────────────────────
+    let piutang = 0;
+    pelangganList.forEach(p => {
+      bulanSet.forEach(bln => {
+        const tagihan = totalInvoiceOf(p, bln, dbNota);
+        if (tagihan > 0 && !paymentStatus[getLockKey(p.name, bln)]) piutang += tagihan;
+      });
+    });
+
+    // ── Utang = biaya belum lunas + sisa cicilan utang aktif ─────────
+    let utang = (dbBiaya||[]).filter(b => !b.lunas).reduce((s,b) => s + b.nominal, 0);
+    utang += getUtangList().filter(u => u.status === "AKTIF").reduce((s,u) => s + u.sisaBulan * u.cicilan, 0);
+
+    // ── Kas = pendapatan lunas - biaya yang sudah dibayar ────────────
+    const biayaDibayar = (dbBiaya||[]).filter(b => b.lunas).reduce((s,b) => s + b.nominal, 0);
+    const kas = pendapatanLunas - biayaDibayar;
+
+    // ── Modal Bersih = Kas + Piutang + Peralatan - Utang ─────────────
+    const peralatan = parseCurrencyValue(document.getElementById("settingPeralatan")?.value)
+                      || pengaturan.peralatan || 0;
+    const modal = kas + piutang + peralatan - utang;
+    //   (Ini mencerminkan: Aset = Kewajiban + Modal → Neraca sederhana)
+
+    // ── Update UI kotak keuangan ──────────────────────────────────────
+    document.getElementById("boxTotalOmset").innerText = fmtRp(penjualan);
+    document.getElementById("boxTotalHPP").innerText   = fmtRp(totalHPP);
+    document.getElementById("boxTotalAdm").innerText   = fmtRp(totalAdm);
+    document.getElementById("boxLabaBersih").innerText = fmtRp(labaBersih);
+    document.getElementById("boxPiutang").innerText    = fmtRp(piutang);
+    document.getElementById("boxTotalUtang").innerText = fmtRp(utang);
+    document.getElementById("boxKas").innerText        = fmtRp(kas);
+    document.getElementById("boxModal").innerText      = fmtRp(modal);
+
+    // ── Render tabel riwayat pengeluaran ──────────────────────────────
+    // ... render tabel biaya ...
+
+  } catch (err) { toast("Gagal menghitung keuangan.", "error"); }
+  finally { hideLoading(); }
+}
+```
+
+**Ringkasan Formula Keuangan:**
+```
+Penjualan Bersih = Σ tagihan semua pelanggan semua bulan
+Laba Kotor       = Penjualan - Total HPP
+Laba Bersih      = Laba Kotor - Total Biaya Adm
+Piutang          = Σ tagihan yang BELUM lunas
+Kas              = Σ pendapatan yang LUNAS - Σ biaya yang sudah dibayar
+Modal Bersih     = Kas + Piutang + Nilai Peralatan - Total Utang
+```
+
+---
+
+### 9.2 `tampilkanLaporan()` — Laporan Laba Rugi & Neraca
+
+Membuild HTML tabel laporan keuangan dengan data yang sudah ada di kotak dashboard:
+
+```javascript
+async function tampilkanLaporan() {
+  await hitungMenejemenKeuangan(); // Pastikan data terbaru
+  // Baca nilai dari kotak dashboard
+  const penjualan  = parseCurrencyValue(document.getElementById("boxTotalOmset").innerText);
+  const totalHPP   = parseCurrencyValue(document.getElementById("boxTotalHPP").innerText);
+  const totalAdm   = parseCurrencyValue(document.getElementById("boxTotalAdm").innerText);
+  const labaBersih = parseCurrencyValue(document.getElementById("boxLabaBersih").innerText);
+  const piutang    = parseCurrencyValue(document.getElementById("boxPiutang").innerText);
+  const utang      = parseCurrencyValue(document.getElementById("boxTotalUtang").innerText);
+  const kas        = parseCurrencyValue(document.getElementById("boxKas").innerText);
+  const modal      = parseCurrencyValue(document.getElementById("boxModal").innerText);
+  const peralatan  = pengaturan.peralatan || 0;
+
+  // Render 2 laporan: Laba Rugi + Neraca
+  container.innerHTML = `
+    <!-- Laporan Laba Rugi -->
+    Penjualan Jasa          : ${fmtRp(penjualan)}
+    Total HPP               : ${fmtRp(totalHPP)}
+    ─────────────────────────────────
+    LABA KOTOR              : ${fmtRp(penjualan - totalHPP)}
+    Total Biaya Adm & Umum  : ${fmtRp(totalAdm)}
+    ─────────────────────────────────
+    LABA BERSIH             : ${fmtRp(labaBersih)}
+
+    <!-- Neraca -->
+    ASET
+      Kas / Bank            : ${fmtRp(kas)}
+      Piutang Usaha         : ${fmtRp(piutang)}
+      Peralatan             : ${fmtRp(peralatan)}
+      ──────────────────────
+      Total Aset            : ${fmtRp(kas + piutang + peralatan)}
+
+    KEWAJIBAN
+      Utang Usaha           : ${fmtRp(utang)}
+
+    MODAL
+      Modal Bersih          : ${fmtRp(modal)}
+      Aset = Kewajiban + Modal (persamaan akuntansi dasar)
+  `;
+}
+```
+
+---
+
+## 10. script.js Bagian 5 — Gaji & Absensi
+
+### 10.1 Render & Simpan Absensi
+
+```javascript
+function renderAbsensiTable() {
+  const tgl = document.getElementById("absensiTanggal").value;
+  if (!tgl || karyawanList.length === 0) return;
+
+  let html = '<table class="linen-table"><tr><th>Nama</th><th>Status</th></tr>';
+  karyawanList.forEach(k => {
+    const exist  = absensiList.find(a => a.tanggal === tgl && a.karyawanId === k.id);
+    const status = exist ? exist.status : "Hadir"; // Default: Hadir
+    html += `<tr>
+      <td>${k.nama}</td>
+      <td>
+        <select class="absen-status" data-kid="${k.id}">
+          ${["Hadir","Izin","Alpa","Libur"].map(s => `<option ${status===s?"selected":""}>${s}</option>`).join("")}
+        </select>
+      </td>
+    </tr>`;
+  });
+  html += '</table><button class="btn btn-success" onclick="simpanAbsensi()">Simpan Absensi</button>';
+  document.getElementById("absensiContainer").innerHTML = html;
+}
+
+async function simpanAbsensi() {
+  const tgl = document.getElementById("absensiTanggal").value;
+  const promises = [];
+  document.querySelectorAll(".absen-status").forEach(sel => {
+    const kid = parseInt(sel.getAttribute("data-kid"));
+    // Delete lama → insert baru (upsert manual)
+    promises.push(
+      db.from("absensi").delete().eq("tanggal", tgl).eq("karyawan_id", kid)
+        .then(() => db.from("absensi").insert([{ tanggal: tgl, karyawan_id: kid, status: sel.value }]))
+    );
+  });
+  await Promise.all(promises);
+  await refreshDataSistem();
+  toast("Absensi tersimpan!", "success");
+}
+```
+
+---
+
+### 10.2 `hitungKgHarian(transaksiPeriode, tarifInternal)` — KG per Hari
+
+```javascript
+function hitungKgHarian(transaksiPeriode, tarifInternal) {
+  const kgHarian = {};
+  transaksiPeriode.forEach(nota => {
+    const tgl = nota.tanggal;
+    const pel = pelangganList.find(p => p.name === nota.pelanggan);
+    if (!pel) return;
+
+    // Lewati nota FLAT (tidak menambah beban kerja nyata)
+    if (pel.type === "HOTEL" && pel.billingSystem === "FLAT" && nota.jenis === "FLAT") return;
+
+    let kg = 0;
+    if (pel.type === "RS") {
+      // RS: jumlah KG langsung dari item
+      kg = nota.items.reduce((s, it) => s + (it.qty || 0), 0);
+    } else if (pel.type === "HOTEL") {
+      // Hotel: konversi total rupiah → KG via tarif internal
+      kg = nota.total / (tarifInternal || 7000);
+      // Contoh: Rp 350.000 / Rp 7.000/KG = 50 KG
+    }
+    kgHarian[tgl] = (kgHarian[tgl] || 0) + kg;
+  });
+  return kgHarian; // { "2025-01-15": 120.5, "2025-01-16": 85.0, ... }
+}
+```
+
+---
+
+### 10.3 `tampilkanListGajiBaru()` — Hitung Upah Borongan
+
+```javascript
+async function tampilkanListGajiBaru() {
+  const tglMulai  = document.getElementById("gajiTglMulai").value;
+  const tglSelesai= document.getElementById("gajiTglSelesai").value;
+
+  const transaksi = (JSON.parse(localStorage.getItem("DB_NOTA")) || [])
+    .filter(n => n.tanggal >= tglMulai && n.tanggal <= tglSelesai);
+
+  const kgHarian = hitungKgHarian(transaksi, pengaturan.tarifInternalHotel || 7000);
+  const ongkos   = pengaturan.ongkosPerKg || 1200; // Rp per KG untuk upah
+
+  const { data: dataGaji } = await db.from("gaji").select("*");
+
+  const hasil = karyawanList.map(k => {
+    let totalUpah = 0;
+    const rincian = [];
+
+    // Iterasi setiap hari dalam periode
+    let current = new Date(tglMulai);
+    const end   = new Date(tglSelesai);
+    while (current <= end) {
+      const tgl    = current.toISOString().slice(0, 10);
+      const absen  = absensiList.find(a => a.tanggal === tgl && a.karyawanId === k.id);
+      const status = absen ? absen.status : "Hadir"; // Default jika tidak ada data: Hadir
+      const kg     = kgHarian[tgl] || 0;
+      let upah = 0, hadir = 0;
+
+      if (status === "Hadir") {
+        // Hitung berapa karyawan yang hadir hari itu
+        hadir = karyawanList.filter(k2 => {
+          const a2 = absensiList.find(a => a.tanggal === tgl && a.karyawanId === k2.id);
+          return a2 ? a2.status === "Hadir" : true;
+        }).length || 1;
+
+        upah = Math.floor((kg * ongkos) / hadir);
+        // Contoh: 100 KG × Rp 1.200 / 3 hadir = Rp 40.000/orang
+        totalUpah += upah;
+      }
+
+      rincian.push({ tanggal: tgl, kg, ongkos, hadir, upah, status });
+      current.setDate(current.getDate() + 1); // Hari berikutnya
+    }
+
+    // Ambil data insentif/lembur/potongan jika sudah disimpan
+    const simpan = dataGaji.find(g =>
+      g.karyawan_id === k.id &&
+      g.periode_mulai === tglMulai &&
+      g.periode_selesai === tglSelesai
+    ) || {};
+
+    return {
+      karyawan:     k,
+      totalUpah,
+      insentif:     simpan.insentif  || 0,
+      lembur:       simpan.lembur    || 0,
+      potongan:     simpan.potongan  || 0,
+      totalDiterima: Math.floor(totalUpah + (simpan.insentif||0) + (simpan.lembur||0) - (simpan.potongan||0)),
+      // Total Diterima = Upah + Insentif + Lembur - Potongan/Kas Bon
+      rincian,
+      periodeMulai: tglMulai, periodeSelesai: tglSelesai, gajiId: simpan.id
+    };
+  });
+
+  _hasilGaji = hasil; // Simpan untuk cetak slip nanti
+}
+```
+
+---
+
+## 11. script.js Bagian 6 — Cetak & Export Dokumen
+
+### 11.1 `generateKopHTML()` — Build HTML Kop Surat
+
+```javascript
+async function generateKopHTML() {
+  const kop    = JSON.parse(localStorage.getItem("DB_KOP")) || {};
+  const logoUrl = await getLogoFromIndexedDB();
+
+  let html = '<div style="display:flex; align-items:center; border-bottom:3px double #1e3a5f; ...">';
+  if (logoUrl) {
+    html += `<div style="flex-shrink:0; margin-right:20px; border-right:1px solid #ccc;">
+      <img src="${logoUrl}" style="max-height:65px; max-width:180px;" alt="Logo">
+    </div>`;
+  }
+  html += '<div style="flex:1;">';
+  html += `<h2 style="font-size:18px; font-weight:800; color:#1e3a5f; ...">${kop.nama || "PELANGI LAUNDRY"}</h2>`;
+  if (kop.alamat)  html += `<p>${kop.alamat}</p>`;
+  if (kop.telepon || kop.email) {
+    html += `<p>`;
+    if (kop.telepon) html += `Telp: ${kop.telepon}`;
+    if (kop.telepon && kop.email) html += " &nbsp;|&nbsp; ";
+    if (kop.email)   html += `Email: ${kop.email}`;
+    html += `</p>`;
+  }
+  if (kop.kontak) html += `<p>Contact Person: ${kop.kontak}</p>`;
+  html += "</div></div>";
+  return html;
+}
+```
+
+---
+
+### 11.2 `buildLinenRoomHTML(pel, bln, logoUrl)` — Laporan Linen Room
+
+Grid 31 kolom (tanggal 1–31) × baris linen, menampilkan berapa pcs tiap linen per hari:
+
+```javascript
+async function buildLinenRoomHTML(pel, bln, logoUrl) {
+  const kopHTML = await generateKopHTML();
+  const dbNota  = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
+  const semua   = dbNota.filter(n => n.pelanggan === pel && n.tanggal.startsWith(bln));
+  const pData   = pelangganList.find(p => p.name === pel);
+  const isFlatCustomer = pData?.type === "HOTEL" && pData.billingSystem === "FLAT";
+
+  // Buat grid: { linenId: { name, price, qty: {1:0, 2:5, ..., 31:0} } }
+  const linenUrutan = pData ? getLinenPelanggan(pData.id) : [];
+  const orderedLinen = linenUrutan.map(e => masterLinen.find(m => m.id === e.linenId)).filter(Boolean);
+  const grid = {};
+  orderedLinen.forEach(item => {
+    const price = hargaKhusus[item.id] || 0;
+    grid[item.id] = { name: item.name, price, qty: {} };
+    for (let d = 1; d <= 31; d++) grid[item.id].qty[d] = 0;
+  });
+
+  // Isi grid dari nota
+  semua.forEach(nota => {
+    const day = parseInt(nota.tanggal.split("-")[2], 10);
+    if (isFlatCustomer && nota.jenis !== "FLAT") return; // FLAT customer hanya nota FLAT
+    nota.items.forEach(it => {
+      if (it.idMaster && grid[it.idMaster] && day >= 1 && day <= 31)
+        grid[it.idMaster].qty[day] += it.qty || 0;
+    });
+  });
+
+  // Build HTML tabel
+  let html = `...header tabel 31 kolom...`;
+  let grandTotalQty = 0, grandTotalAmount = 0;
+  orderedLinen.forEach(item => {
+    const data = grid[item.id]; if (!data) return;
+    let totalQty = 0;
+    let rowHtml = "";
+    for (let d = 1; d <= 31; d++) {
+      const q = data.qty[d];
+      rowHtml += `<td>${q > 0 ? q : ""}</td>`;
+      totalQty += q;
+    }
+    if (totalQty === 0 && !isFlatCustomer) return; // Skip baris kosong (kecuali flat customer)
+    const amount = totalQty * data.price;
+    grandTotalQty += totalQty; grandTotalAmount += amount;
+    html += `<tr>...<td>${totalQty}</td><td>${amount.toLocaleString("id-ID")}</td></tr>`;
+  });
+  // Row total keseluruhan
+  html += `<tr>TOTAL KESELURUHAN | ${grandTotalQty} | ${grandTotalAmount}</tr>`;
+  return html;
+}
+```
+
+---
+
+### 11.3 `buildInvoicePelangganHTML(pel, bln, kopHTML)` — Invoice Formal
+
+Mengompilasi semua nota per bulan, dikelompokkan per jenis nota dengan urutan baku:
+
+```javascript
+async function buildInvoicePelangganHTML(pel, bln, kopHTML) {
+  const semua = dbNota.filter(n => n.pelanggan === pel && n.tanggal.startsWith(bln));
+
+  // Kelompokkan total per jenis nota
+  const totalsPerJenis = {};
+  semua.forEach(nota => {
+    const j = nota.jenis;
+    if (!totalsPerJenis[j]) totalsPerJenis[j] = 0;
+    if (isFlatCustomer && (j === "FLAT" || j === "FLAT ASLI")) return; // Skip flat nota
+    totalsPerJenis[j] += nota.total || 0;
+  });
+
+  // Urutan tampil di invoice (baku)
+  const orderJenis = ["FLAT", "NON FLAT", "FNB", "SPOTING"];
+  const labelMap = {
+    "FLAT":    "Biaya Langganan Flat Bulanan",
+    "NON FLAT":"Cucian Non Flat (Perincian Terlampir)",
+    "FNB":     "Cucian F & B (Perincian Terlampir)",
+    "SPOTING": "Spotting / Treatment (Perincian Terlampir)",
+  };
+
+  let grandTotal = 0, detailRows = "", counter = 1;
+  orderJenis.forEach(j => {
+    let amount = (j === "FLAT" && isFlatCustomer) ? flatRate : (totalsPerJenis[j] || 0);
+    if (amount === 0) return; // Skip jika nol
+    grandTotal += amount;
+    detailRows += `<tr><td>${counter}</td><td>${labelMap[j]||j}</td><td>${fmtRp(amount)}</td></tr>`;
+    counter++;
+  });
+
+  // Jenis nota yang tidak ada di orderJenis (custom)
+  for (const [jenis, amount] of Object.entries(totalsPerJenis)) {
+    if (!orderJenis.includes(jenis) && amount > 0) {
+      grandTotal += amount;
+      detailRows += `<tr><td>${counter}</td><td>${jenis} (Perincian Terlampir)</td><td>${fmtRp(amount)}</td></tr>`;
+      counter++;
+    }
+  }
+
+  // Generate nomor invoice (stable)
+  const invNumber = await getInvoiceStableNumber(kodePel, bln);
+
+  // Return dokumen HTML lengkap dengan CSS inline
+  return `<!DOCTYPE html><html>...<body>
+    ${kopHTML}
+    <h1>INVOICE</h1>
+    DATE: ${tglCetak}
+    INVOICE NUMBER: ${invNumber}
+    CUSTOMER: ${pel}
+    Detail tabel...
+    TOTAL: ${fmtRp(grandTotal)}
+    TERBILANG: === ${terbilang(grandTotal)} rupiah. ===
+    Info rekening bank...
+    Tanda tangan direktur...
+  </body></html>`;
+}
+```
+
+---
+
+### 11.4 `buildKuitansiHTML(pel, bln, logoUrl)` — Kuitansi Pembayaran
+
+Dokumen hukum penerimaan pembayaran. Berbeda dengan invoice (dokumen tagihan), kuitansi adalah bukti bahwa pembayaran sudah diterima:
+
+```javascript
+async function buildKuitansiHTML(pel, bln, logoUrl) {
+  // Hitung total tagihan (sama dengan invoice)
+  let totalTagihan = isFlatCustomer
+    ? flatRate + Σ(totalsPerJenis bukan FLAT)
+    : Σ(semua totalsPerJenis);
+  totalTagihan = Math.floor(totalTagihan);
+
+  // Deskripsi berbeda berdasarkan tipe pelanggan
+  let deskripsi;
+  if (pData.type === "RS") {
+    deskripsi = `Biaya Cuci Linen mulai tgl. ${fmtTgl(tglAwal)} - ${fmtTgl(tglAkhir)}
+                 = ${totalKg} kg @ Rp.${tarifRS},- (Perincian terlampir)`;
+  } else if (isFlatCustomer) {
+    deskripsi = `Biaya Cuci Linen Bulan ${namaBulan} ${tahunStr}`;
+  } else {
+    deskripsi = `Biaya Cuci Linen Bulan ${namaBulan} ${tahunStr} (Perincian Terlampir)`;
+  }
+
+  const terbilangCaps = /* "Satu juta lima ratus ribu rupiah.-" */
+
+  return `<!DOCTYPE html>...
+    ${kopHTML}
+    KWITANSI No. : ${nomorKwitansi}
+    TERIMA DARI  : ${pel}
+    SEBESAR      : ${terbilangCaps}
+    UNTUK        : ${deskripsi}
+    TERBILANG: Rp ${totalTagihan.toLocaleString("id-ID")},-
+    Info rekening + tanda tangan
+  ...`;
+}
+```
+
+---
+
+### 11.5 `buildSlipGajiHTML(kId, mulai, selesai, logoUrl)` — Slip Gaji
+
+```javascript
+async function buildSlipGajiHTML(kId, mulai, selesai, logoUrl) {
+  const h = _hasilGaji.find(h => h.karyawan.id == kId);
+  if (!h) return null;
+  const k = h.karyawan;
+  const kopHTML = await generateKopHTML();
+
+  return `<!DOCTYPE html><html>...<body>
+    ${kopHTML}
+    SLIP UPAH KARYAWAN
+    Nama: ${k.nama} | Bagian: ${k.bagian} | Periode: ${mulai} s/d ${selesai}
+
+    Upah Kerja : ${fmtRp(h.totalUpah)}
+    Insentif   : ${fmtRp(h.insentif)}
+    Lembur     : ${fmtRp(h.lembur)}
+    Potongan   : ${fmtRp(h.potongan)}
+    ──────────────────────────────
+    Total Diterima : ${fmtRp(h.totalDiterima)}
+
+    Terbilang: ${terbilang(h.totalDiterima)} rupiah
+
+    REKAPITULASI HARIAN:
+    [Tanggal | Status | KG | Ongkos | Hadir | Upah] per hari
+  </body></html>`;
+}
+```
+
+---
+
+### 11.6 `downloadFile(content, filename)` — Trigger Download
+
+```javascript
+function downloadFile(content, filename) {
+  const blob = new Blob([content], { type: "text/html" });
+  const a    = document.createElement("a");
+  a.href     = URL.createObjectURL(blob); // Buat URL sementara
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();                   // Trigger download otomatis
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href); // Bebaskan memori
+  toast("Dokumen diunduh.", "info", 2000);
+}
+```
+
+---
+
+## 12. script.js Bagian 7 — Backup & Restore
+
+### 12.1 `exportAllData()` — Export Full Supabase
+
+```javascript
+async function exportAllData() {
+  const tables = [
+    "pelanggan","jenis_nota","master_linen","karyawan","absensi",
+    "pengaturan","kop","harga_pelanggan","nota","biaya",
+    "invoice_numbers","invoice_counter","payment_status","locks",
+    "utang","gaji","backup_history","linen_pelanggan"
+  ]; // 18 tabel
+  const allData = {};
+  for (const table of tables) {
+    const { data } = await db.from(table).select("*");
+    allData[table] = data;
+  }
+  // Download sebagai JSON
+  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `pelangi_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  toast("Data berhasil diexport.", "success");
+}
+```
+
+---
+
+### 12.2 `backupBulan(bln)` — Backup Per Bulan
+
+Urutan operasi:
+1. Export semua data → download JSON
+2. Hapus data bulan tsb dari Supabase (nota, biaya, absensi, gaji)
+3. Catat bulan ke backup_history di Supabase
+4. Hapus dari localStorage
+5. Catat ke DB_BACKUP_HISTORY localStorage
+6. Refresh UI
+
+```javascript
+async function backupBulan(bln) {
+  if (!await window.customConfirm(`Backup & hapus transaksi bulan ${bln}?`)) return;
+
+  // Export data
+  const allData = { metadata: { version: "v24" }, data: {} };
+  allKeys.forEach(k => allData.data[k] = JSON.parse(localStorage.getItem(k)));
+  const blob = new Blob([JSON.stringify(allData, null, 2)], { type: "application/json" });
+  // ... trigger download ...
+
+  // Hapus dari Supabase
+  await db.from("nota").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
+  await db.from("biaya").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
+  await db.from("absensi").delete().gte("tanggal", `${bln}-01`).lte("tanggal", `${bln}-31`);
+  await db.from("gaji").delete().gte("periode_mulai", `${bln}-01`).lte("periode_mulai", `${bln}-31`);
+  await db.from("backup_history").insert([{ bulan: bln }]);
+
+  // Hapus dari localStorage
+  let dbNota = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
+  dbNota = dbNota.filter(n => n.tanggal?.substring(0,7) !== bln);
+  localStorage.setItem("DB_NOTA", JSON.stringify(dbNota));
+  // ... dst untuk DB_BIAYA, DB_ABSENSI, DB_GAJI ...
+
+  await refreshDataSistem();
+  renderBackupStatus();
+  toast(`Backup bulan ${bln} berhasil.`, "success");
+}
+```
+
+---
+
+### 12.3 `handleFileImport(input)` — Import dari File
+
+Menangani 2 format file backup berbeda:
+
+```javascript
+reader.onload = async (e) => {
+  const json = JSON.parse(e.target.result);
+
+  // FORMAT 1: exportAllData → key = nama tabel Supabase
+  if (!json.data && (json.nota || json.pelanggan || json.biaya)) {
+    for (const [table, rows] of Object.entries(json)) {
+      if (!Array.isArray(rows) || rows.length === 0) continue;
+      await db.from(table).upsert(rows); // Langsung upsert
+    }
+  }
+
+  // FORMAT 2: backupBulan → key = DB_XXX → perlu transform ke Supabase format
+  else if (json.data) {
+    const mapTable = {
+      DB_NOTA: "nota", DB_BIAYA: "biaya", DB_PELANGGAN: "pelanggan",
+      DB_KARYAWAN: "karyawan", DB_ABSENSI: "absensi",
+      DB_JENIS_NOTA: "jenis_nota", DB_MASTER_LINEN: "master_linen",
+      DB_HARGA_PELANGGAN: "harga_pelanggan", DB_PENGATURAN: "pengaturan",
+      DB_KOP: "kop", DB_UTANG: "utang", DB_LOCKS: "locks",
+      DB_PAYMENT_STATUS: "payment_status", DB_INVOICE_NUMBERS: "invoice_numbers",
+      DB_INVOICE_COUNTER: "invoice_counter", DB_BACKUP_HISTORY: "backup_history",
+      DB_LINEN_PELANGGAN: "linen_pelanggan",
+    };
+
+    for (const [key, value] of Object.entries(json.data)) {
+      const table = mapTable[key]; if (!table) continue;
+      let supabaseRows = [];
+
+      // Transform per tabel (rename field camelCase → snake_case)
+      if (table === "pelanggan") {
+        supabaseRows = rows.map(r => ({
+          id: r.id, nama: r.name, kode: r.kode,
+          tipe: r.type, billing_system: r.billingSystem,
+          flat_rate: r.flatRate, tarif_rs: r.tarifRS,
+          alamat: r.alamat, kota: r.kota
+        }));
+      } else if (table === "harga_pelanggan") {
+        // Object nested → array of rows
+        Object.entries(value).forEach(([pid, map]) => {
+          Object.entries(map).forEach(([lid, harga]) => {
+            supabaseRows.push({ pelanggan_id: parseInt(pid), linen_id: parseInt(lid), harga });
+          });
+        });
+      }
+      // ... transformasi per tabel lainnya ...
+
+      if (supabaseRows.length > 0) await db.from(table).upsert(supabaseRows);
+    }
+
+    // Update localStorage juga
+    Object.entries(json.data).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
+  }
+
+  toast(`Import selesai.`, "success");
+  setTimeout(() => location.reload(), 1500);
 };
 ```
 
-### 6.10 Total Bulan Cicilan Utang
-```
-totalBulan = (tahunSampai - tahunDari) × 12 + (bulanSampai - bulanDari) + 1
-sisaTotal = sisaBulan × cicilan
-```
-
-### 6.11 Nomor Invoice
-```
-Format: XXX/PL-KODE/BULAN_ROMAWI/TAHUN
-Contoh: 001/PL-GDS/VII/2025
-
-XXX = counter per (kode pelanggan, tahun), 3 digit
-PL = prefix tetap
-KODE = kode pelanggan (auto-generate dari nama)
-BULAN_ROMAWI = I, II, III, ..., XII
-TAHUN = 4 digit
-
-Cache di localStorage (DB_INVOICE_NUMBERS, DB_INVOICE_COUNTER) + sync ke Supabase
-Sekali nomor di-generate, tidak akan berubah (stable number)
-```
-
-### 6.12 Terbilang (Angka → Huruf)
-Algoritma rekursif:
-```
-- 0-11 → "nol", "satu", "dua", ..., "sebelas"
-- 12-19 → terbilang(angka-10) + " belas"  (contoh: 15 → "lima belas")
-- 20-99 → s[floor(angka/10)] + " puluh" + (sisa ? " " + terbilang(sisa) : "")
-- 100-199 → "seratus " + terbilang(angka-100)
-- 200-999 → s[floor(angka/100)] + " ratus" + ...
-- 1000-1999 → "seribu " + terbilang(angka-1000)
-- 1000-999999 → terbilang(floor(angka/1000)) + " ribu" + ...
-- 1e6-1e9 → terbilang(floor(angka/1e6)) + " juta" + ...
-- ≥ 1e9 → terbilang(floor(angka/1e9)) + " milyar" + ...
-```
-
 ---
 
-## 7. Relasi `index.html` ↔ `script.js`
+### 12.4 `cekPeringatanBackup()` — Peringatan Otomatis
 
-### 7.1 Pola Umum
-Setiap elemen interaktif di `index.html` memiliki:
-- **`id`** unik → diakses via `document.getElementById()` di JS
-- **`onclick`** handler → memanggil fungsi global dari script.js
-- **`oninput`** / **`onchange`** → untuk auto-filter & format
+```javascript
+function cekPeringatanBackup() {
+  const dbNota   = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
+  if (dbNota.length === 0) return;
+  const history      = getBackupHistory();
+  const today        = new Date();
+  const currentMonth = today.toISOString().substring(0, 7); // "2025-01"
 
-### 7.2 Tabel Relasi: Element ID ↔ Fungsi JS
-
-#### Login
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#username`, `#password` | `prosesLogin()` | Enter / klik tombol |
-| `#loginError` | (di-show/hide oleh prosesLogin) | - |
-
-#### Navigasi
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `.cat-btn[data-cat]` | `switchCategory('...')` | Klik |
-| `.tab-btn` | `switchTab('...')` | Klik |
-| `#roleBadge` | (diisi oleh bukaAplikasi) | - |
-| Tombol Logout | `logout()` | Klik |
-
-#### Tab Nota
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#pelangganSelect` | `cekTipePelangganInput()` | `onchange` |
-| `#jenisNota` | `renderFormLinenInput()` | `onchange` |
-| `#btnSimpanNota` | `simpanNotaSistem()` | Klik |
-| `#tabelLinenInput` | `renderFormLinenInput()` | Auto-render |
-
-#### Tab Riwayat
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#cariTanggal` | `cariNotaSistem()` | Manual klik Cari |
-| `#cariPelanggan` | `cariNotaSistem()` | `oninput` (auto) |
-| Tombol Cari | `cariNotaSistem()` | Klik |
-| Tombol Semua | `tampilkanSemuaNota()` | Klik |
-| `#tabelRiwayatNota` | `cariNotaSistem()` | Auto-render |
-
-#### Tab Invoice
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#invoicePelangganSelect` | (manual) | - |
-| `#invoiceBulanSelect` | (manual) | - |
-| Tombol Hitung Invoice | `hitungDanAmbilInvoice()` | Klik |
-| Tombol Ubah Kunci | `toggleLockInvoice()` | Klik |
-| Tombol Ubah Status | `toggleStatusPembayaran()` | Klik |
-| Tombol Cetak Linen Room | `cetakInvoice()` | Klik |
-| Tombol Download LR | `downloadInvoice()` | Klik |
-| Tombol Excel | `downloadLinenRoomExcel()` | Klik |
-| Tombol Cetak Invoice | `cetakInvoicePelanggan()` | Klik |
-| `#invoiceTableBody` | `hitungDanAmbilInvoice()` | Auto-render |
-| `#printMonthlyInvoiceArea` | `hitungDanAmbilInvoice()` | Auto-render |
-
-#### Tab Kuitansi
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#kuitansiPelangganSelect`, `#kuitansiBulanSelect` | (manual) | - |
-| Tombol Cetak | `generateKuitansi()` | Klik |
-| Tombol Download | `downloadKuitansi()` | Klik |
-
-#### Tab Keuangan (Dashboard)
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| 8 finance box (`#boxTotalOmset`, dll) | `hitungMenejemenKeuangan()` | Auto-render |
-| `#filterExpMulai`, `#filterExpSelesai`, `#filterExpKat` | `hitungMenejemenKeuangan()` | Change |
-| Tombol Filter | `hitungMenejemenKeuangan()` | Klik |
-| Tombol Reset | `resetFilterExp()` | Klik |
-| `#expKategori` | `toggleCustomExpenseInput()` | `onchange` |
-| `#expNominal` | `formatCurrencyInput(this)` | `oninput` |
-| Tombol Simpan Pengeluaran | `simpanBiayaOperasional()` | Klik |
-| `#tabelRiwayatPengeluaran` | `hitungMenejemenKeuangan()` | Auto-render |
-
-#### Tab Laporan
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| Tombol View | `tampilkanLaporan()` | Klik |
-| Tombol Download PDF | `cetakLaporan()` | Klik |
-| `#laporanContainer` | `tampilkanLaporan()` | Auto-render |
-
-#### Tab Utang
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| Form Utang (5 input) | - | - |
-| Tombol Simpan Utang | `simpanUtang()` | Klik |
-| `#tabelDaftarUtang` | `renderDaftarUtang()` | Auto-render |
-| Tombol Bayar Cicilan (per row) | `bayarCicilan(${u.id})` | Klik |
-
-#### Tab Master Data
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| Tombol 👔 Linen | `bukaModalMasterLinen()` | Klik |
-| Tombol ⚡ Jenis Nota | `bukaModalMasterJenisNota()` | Klik |
-| Tombol 📋 Atur Linen | `bukaModalAturLinenJenisNota()` | Klik |
-| `#newPelangganName` | `autoIsiKodeBaru()` | `oninput` |
-| `#newPelangganType` | `toggleFlatRateInput()` | `onchange` |
-| `#newPelangganBilling` | `toggleFlatRateInput()` | `onchange` |
-| Tombol Tambah Pelanggan | `tambahPelangganBaru()` | Klik |
-| `#newKaryawanNama`, dll | - | - |
-| Tombol Tambah Karyawan | `tambahKaryawan()` | Klik |
-| `#tabelMasterKaryawan` | `renderMasterKaryawanTable()` | Auto-render |
-| 5 input setting (tarif, ongkos, rekening, dll) | `formatCurrencyInput(this)` | `oninput` |
-| Tombol Simpan Pengaturan | `simpanPengaturanGlobal()` | Klik |
-| 5 input kop surat | - | - |
-| `#fileLogoInput` | `handleLogoUpload(this)` | `onchange` |
-| Tombol Simpan Kop | `simpanKopSurat()` | Klik |
-| Tombol Bersihkan Nota Rusak | `bersihkanNotaRusak()` | Klik |
-| `#daftarPelangganContainer` | `renderDaftarPelanggan()` | Auto-render |
-
-#### Tab Absensi
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#absensiTanggal` | `renderAbsensiTable()` | `onchange` |
-| `#absensiContainer` | `renderAbsensiTable()` | Auto-render |
-| Tombol Simpan Absensi (dynamic) | `simpanAbsensi()` | Klik |
-
-#### Tab Gaji
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#gajiTglMulai`, `#gajiTglSelesai` | - | - |
-| Tombol Tampilkan | `tampilkanListGajiBaru()` | Klik |
-| `#listGajiContainer` | `tampilkanListGajiBaru()` | Auto-render |
-
-#### Tab Backup
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| Tombol Export Semua | `exportAllData()` | Klik |
-| Tombol Import Data | `importDataViaFile()` | Klik |
-| Tombol Backup & Bersihkan | `backupDanBersihkan()` | Klik |
-| Tombol Backup Semua Bulan Belum | `backupSemuaBulanBelum()` | Klik |
-| `#fileImportInput` | `handleFileImport(this)` | `onchange` |
-| `#backupStatusArea` | `renderBackupStatus()` | Auto-render |
-
-#### FAB
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#fabBtn` | `toggleFab()` | Klik |
-| `.fab-item` | `fabAction('invoice'/'gaji'/'absensi')` | Klik |
-
-#### Modal
-| HTML ID | Fungsi JS | Trigger |
-|---------|-----------|---------|
-| `#detailModal` close button | `tutupModalDetail()` | Klik |
-| `#editLinenModal` close button | `tutupModalEdit()` | Klik |
-| `#editNotaJenisSelect` | `onEditJenisChange()` | `onchange` |
-| Tombol Simpan Perubahan | `simpanPerubahanQtyNota()` | Klik |
-| `#editBiayaModal` close button | `tutupModalEditBiaya()` | Klik |
-| `#editBiayaKategori` | `toggleEditCustomBiaya()` | `onchange` |
-| Tombol Simpan Edit Biaya | `simpanEditBiaya()` | Klik |
-| `#editGajiModal` close button | `tutupEditGaji()` | Klik |
-| Tombol Simpan Edit Gaji | `simpanEditGajiBaru()` | Klik |
-| `#editKaryawanModal` close button | `tutupEditKaryawanModal()` | Klik |
-| Tombol Simpan Edit Karyawan | `updateKaryawanFromModal()` | Klik |
-| `#modalMasterLinen` close button | `tutupModal('modalMasterLinen')` | Klik |
-| Tombol Tambah Linen | `tambahLinen()` | Klik |
-| `#modalMasterJenisNota` close button | `tutupModal('modalMasterJenisNota')` | Klik |
-| Tombol Tambah Jenis Nota | `addMasterJenisNota()` | Klik |
-| `#modalAturLinenJenisNota` close button | `tutupModal('modalAturLinenJenisNota')` | Klik |
-| `#aturLinenJenisSelect` | `loadLinenConfigForJenisNota()` | `onchange` |
-| Tombol Simpan Atur Linen | `simpanLinenConfigJenisNota()` | Klik |
-| `#modalDetailPelanggan` close button | `tutupModal('modalDetailPelanggan')` | Klik |
-| `#editPelangganType` | `handleEditTipeChange()` + `handleEditBillingChange()` | `onchange` |
-| Tombol Simpan Detail Pelanggan | `simpanDetailPelanggan()` | Klik |
-
-### 7.3 Pola Interaksi Utama
-
-#### Pola 1: Form Submission
-```
-User isi form → Klik tombol Simpan
-   → setBtnLoading(btn, true)
-   → Validasi input (toast warning jika gagal)
-   → Insert/Update ke Supabase
-   → Refresh data dari Supabase
-   → Re-render UI
-   → setBtnLoading(btn, false)
-   → Toast sukses/error
-```
-
-#### Pola 2: Auto-Filter (Smart Search)
-```
-User ketik di input search
-   → oninput trigger fungsi onCariXInput()
-   → Update tombol clear (×) visibility
-   → Re-render daftar dengan filter
-   → Jika input kosong → tampilkan semua
-```
-
-#### Pola 3: Tab Switching
-```
-User klik tab → switchTab(tabId)
-   → Sembunyikan semua .tab-content
-   → Tampilkan tab aktif
-   → Update aria-selected + active
-   → Trigger fungsi inisialisasi tab (cariNotaSistem, hitungMenejemenKeuangan, dll)
-   → Setup FAB untuk tab
-```
-
-#### Pola 4: Cetak Dokumen
-```
-User klik tombol cetak
-   → loadingThen(label, asyncFn)
-   → Generate HTML lengkap (dengan kop, data, signature)
-   → window.open("", "_blank")
-   → printWindow.document.write(html)
-   → printWindow.document.close()
-   → printWindow.onload → printWindow.print()
-   → setTimeout 2 detik → printWindow.close()
-```
-
----
-
-## 8. Sistem Penyimpanan Data
-
-### 8.1 Tiga Lapis Penyimpanan
-
-```
-┌─────────────────────────────────────────────────────┐
-│ Supabase (Cloud - Source of Truth)                  │
-│ 18 tabel: nota, biaya, pelanggan, jenis_nota,       │
-│ master_linen, karyawan, absensi, gaji, pengaturan,  │
-│ kop, harga_pelanggan, linen_pelanggan, utang,       │
-│ locks, payment_status, invoice_numbers,             │
-│ invoice_counter, backup_history                     │
-└──────────────────────┬──────────────────────────────┘
-                       │ sync (Promise.all)
-┌──────────────────────▼──────────────────────────────┐
-│ localStorage (Cache - DB_XXX keys)                  │
-│ DB_NOTA, DB_BIAYA, DB_PELANGGAN, DB_JENIS_NOTA,     │
-│ DB_MASTER_LINEN, DB_KARYAWAN, DB_ABSENSI, DB_GAJI,  │
-│ DB_PENGATURAN, DB_KOP, DB_HARGA_PELANGGAN,          │
-│ DB_LINEN_PELANGGAN, DB_UTANG, DB_LOCKS,             │
-│ DB_PAYMENT_STATUS, DB_INVOICE_NUMBERS,              │
-│ DB_INVOICE_COUNTER, DB_BACKUP_HISTORY               │
-└─────────────────────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────┐
-│ IndexedDB (Biner - Logo)                            │
-│ Database: "PelangiLaundry", Object Store: "logo"    │
-│ Key: "kop" → Value: dataURL image                  │
-└─────────────────────────────────────────────────────┘
-```
-
-### 8.2 Strategi Sinkronisasi
-- **Read**: Ambil dari Supabase → cache ke localStorage → baca dari localStorage untuk operasi lokal
-- **Write**: Insert/Update ke Supabase → panggil `refreshDataSistem()` untuk update cache
-- **Delete**: Delete dari Supabase → refresh cache
-- **Offline**: Aplikasi tetap bisa membaca data dari localStorage cache, tapi tidak bisa write
-
-### 8.3 Mengapa Tiga Lapis?
-1. **Supabase** → Data persisten lintas device, kolaborasi multi-user
-2. **localStorage** → Akses cepat untuk operasi lokal (tanpa round-trip ke server), fallback jika offline
-3. **IndexedDB** → Kapasitas besar untuk file biner (logo), tidak muat di localStorage (limit ~5MB)
-
-### 8.4 Backup Format
-Backup menghasilkan JSON dengan struktur:
-```json
-{
-  "metadata": { "version": "v24" },
-  "data": {
-    "DB_NOTA": [...],
-    "DB_BIAYA": [...],
-    "DB_PELANGGAN": [...],
-    ...
+  let oldestUnbacked = null;
+  for (const nota of dbNota) {
+    if (!nota.tanggal) continue;
+    const bln = nota.tanggal.substring(0, 7);
+    // Cari bulan lalu yang belum di-backup
+    if (bln < currentMonth && !history.includes(bln)) {
+      oldestUnbacked = bln; break;
+    }
+  }
+  if (oldestUnbacked) {
+    toast(`⚠️ Transaksi bulan ${oldestUnbacked} belum di-backup!`, "warning", 6000);
   }
 }
 ```
 
-Import mendeteksi 2 format:
-- **Format `exportAllData`** (langsung tabel Supabase) → upsert langsung
-- **Format `backupBulan`** (DB_XXX keys) → transform ke schema Supabase dulu, lalu upsert
-
 ---
 
-## 9. Alur Penggunaan Aplikasi
+## 13. Navigasi & Flow Lengkap
 
-### 9.1 Alur Login
-```
-1. User buka halaman → tampil #loginPage
-2. Input username/password → Enter atau klik "Masuk"
-3. prosesLogin() validasi kredensial
-   - Berhasil → bukaAplikasi() → refreshDataSistem()
-   - Gagal → tampilkan #loginError
-4. Setelah login:
-   - admin → semua menu tampil
-   - user → menu admin-only disembunyikan
-```
+### 13.1 Struktur Kategori Tab (`TAB_CATEGORIES`)
 
-### 9.2 Alur Input Transaksi
-```
-1. Pilih tanggal (default hari ini)
-2. Pilih pelanggan → cekTipePelangganInput()
-   - HOTEL → tampilkan form linen (tabel)
-   - RS → tampilkan form berat KG
-3. HOTEL: Pilih jenis nota → renderFormLinenInput()
-   - Filter linen: irisan (linen_pelanggan ∩ linen_ids jenis nota)
-   - Tampilkan harga satuan per linen (harga × multiplier)
-4. Isi qty per linen (atau berat KG untuk RS)
-5. Klik "Simpan Transaksi" → simpanNotaSistem()
-   - Validasi
-   - Generate notaId
-   - Insert ke Supabase
-   - Reset form
-   - Refresh data
-   - Re-render riwayat
-   - Recalc keuangan
-```
-
-### 9.3 Alur Generate Invoice Bulanan
-```
-1. Tab Invoice → pilih pelanggan & bulan
-2. Klik "Hitung Invoice" → hitungDanAmbilInvoice()
-   - Filter nota by pelanggan & bulan
-   - Jika belum di-lock → hitungUlangNota (recalc harga terbaru)
-   - Untuk FLAT customer → set total FLAT=0, tambah baris flat rate
-   - Render tabel invoice + preview
-3. Lock invoice (opsional) → toggleLockInvoice()
-   - Setelah di-lock, nota tidak akan di-recalc lagi
-4. Ubah status pembayaran → toggleStatusPembayaran()
-   - Memengaruhi perhitungan piutang & kas
-5. Cetak/download:
-   - Linen Room (rekap harian per linen)
-   - Invoice resmi (format Indonesia)
-   - Excel/CSV
-```
-
-### 9.4 Alur Cetak Kuitansi
-```
-1. Tab Kuitansi → pilih pelanggan & bulan
-2. Klik "Cetak" → generateKuitansi()
-   - Hitung total tagihan
-   - Generate nomor kuitansi (= nomor invoice)
-   - Tentukan deskripsi (RS/FLAT/REGULER)
-   - Render HTML legal portrait
-   - Buka window print
-```
-
-### 9.5 Alur Manajemen Keuangan
-```
-1. Tab Dashboard → otomatis hitungMenejemenKeuangan()
-   - 8 box indikator terisi
-   - Tabel riwayat pengeluaran ter-render
-2. Filter pengeluaran (opsional):
-   - Range tanggal
-   - Kategori spesifik
-3. Catat pengeluaran baru:
-   - Pilih tanggal, kategori, nominal
-   - Checklist "Sudah Dibayar" (default yes)
-   - Simpan → biaya masuk ke Supabase
-   - Recalc keuangan
-4. Edit/hapus pengeluaran via tombol di tabel
-5. Tandai lunas biaya yang belum dibayar
-6. Tab Laporan → view/cetak laporan laba rugi & neraca
-```
-
-### 9.6 Alur Manajemen Utang
-```
-1. Tab Utang → form catat utang baru
-   - Isi nama, periode (dari-sampai), cicilan per bulan, keterangan
-   - Simpan → hitung total bulan, status AKTIF
-2. Daftar utang aktif ditampilkan di tabel
-3. Bayar cicilan:
-   - Klik "Bayar Cicilan" → konfirmasi
-   - Insert ke tabel biaya: kategori "CICILAN UTANG", lunas=true
-   - Update utang: sisa_bulan - 1
-   - Jika sisa = 0 → status "LUNAS"
-   - Recalc keuangan (utang berkurang, kas berkurang)
-```
-
-### 9.7 Alur Hitung Gaji
-```
-1. Tab Gaji → set periode (mulai - selesai)
-2. Klik "Tampilkan" → tampilkanListGajiBaru()
-   - Filter nota dalam periode
-   - Hitung kgHarian per tanggal
-   - Untuk setiap karyawan:
-     - Loop setiap hari dalam periode
-     - Cek absensi
-     - Jika Hadir → upah = (kg × ongkos) / jumlah karyawan hadir
-     - Akumulasi totalUpah
-     - Ambil insentif/lembur/potongan tersimpan
-     - Hitung totalDiterima
-3. Edit insentif/lembur/potongan via tombol Edit
-4. Cetak/download slip gaji per karyawan
-```
-
-### 9.8 Alur Backup
-```
-1. Tab Backup → tampil tabel status backup per bulan
-2. Pilih aksi:
-   a. Export Semua Data → download JSON semua tabel Supabase
-   b. Import Data → upload JSON, sync ke Supabase
-   c. Backup & Bersihkan Semua → backup + hapus semua transaksi
-   d. Backup Semua Bulan Belum → backup bulk bulan yang belum di-backup
-3. Peringatan otomatis:
-   - cekPeringatanBackup() di jalankan saat buka aplikasi
-   - Jika ada bulan lalu belum di-backup → toast warning
-```
-
-### 9.9 Alur Master Data
-```
-1. Tab Master Data → 5 card tersedia
-2. Master Pelanggan:
-   - Tambah baru: isi form → kode auto-generate → simpan
-   - Edit: klik "Edit & Harga" → modal detail
-     - Edit info dasar
-     - Atur urutan linen via drag-drop
-     - Centang linen aktif
-     - Set harga per linen
-     - Set counter awal invoice
-   - Hapus: konfirmasi → delete + hapus harga terkait
-3. Master Karyawan:
-   - Tambah: nama, bagian, persentase
-   - Edit/hapus via tombol di tabel
-4. Master Linen (modal):
-   - Tambah linen baru
-   - Update nama
-   - Hapus
-5. Master Jenis Nota (modal):
-   - Tambah: nama, multiplier, untuk (Flat/Reg/both)
-   - Update/hapus
-6. Atur Linen per Jenis Nota (modal):
-   - Pilih jenis nota
-   - Centang linen yang aktif untuk jenis tsb
-   - Simpan → update linen_ids di jenis_nota
-7. Pengaturan Sistem:
-   - Tarif internal hotel, ongkos per kg
-   - Info rekening bank
-   - Nama direktur, nilai peralatan
-8. Kop Surat:
-   - Nama usaha, alamat, kontak
-   - Upload logo (≤2MB) → simpan ke IndexedDB
-```
-
-### 9.10 Alur Absensi
-```
-1. Tab Absensi → pilih tanggal
-2. Tabel otomatis render semua karyawan
-3. Set status per karyawan: Hadir/Izin/Alpa/Libur (default Hadir)
-4. Klik "Simpan Absensi"
-   - Untuk setiap karyawan: delete absensi lama di tanggal tsb, insert baru
-5. Absensi dipakai di perhitungan gaji
+```javascript
+const TAB_CATEGORIES = {
+  transaksi: {
+    label: "TRANSAKSI",
+    tabs: [
+      ["tab-nota",  "📝 Input Nota"],
+      ["tab-rekap", "🔍 Riwayat Nota"],
+    ]
+  },
+  tagihan: {
+    label: "TAGIHAN",
+    tabs: [
+      ["tab-invoice",  "🧾 Invoice"],
+      ["tab-kuitansi", "📄 Kuitansi"],
+    ]
+  },
+  keuangan: {
+    label: "KEUANGAN",
+    tabs: [
+      ["tab-omset",   "📊 Dashboard"],
+      ["tab-laporan", "📋 Laporan"],
+      ["tab-utang",   "📉 Utang"],
+      ["tab-gaji",    "💵 Gaji"],
+    ]
+  },
+  sistem: {
+    label: "SISTEM",
+    tabs: [
+      ["tab-master", "🛠️ Master Data"],
+      ["tab-absen",  "📅 Absensi"],
+      ["tab-backup", "💾 Backup"],
+    ]
+  },
+};
 ```
 
 ---
 
-## 📌 Ringkasan Akhir
+### 13.2 `switchCategory(cat)` — Ganti Kategori
 
-**Pelangi Laundry v24** adalah aplikasi manajemen laundry yang:
+```javascript
+function switchCategory(cat) {
+  // Update aria & CSS aktif pada tombol kategori
+  document.querySelectorAll(".cat-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.cat === cat);
+    b.setAttribute("aria-selected", b.dataset.cat === cat);
+  });
 
-1. **Multi-tipe pelanggan**: Mendukung HOTEL (per pcs linen dengan sistem REGULER/FLAT) dan RS (per kilogram)
+  const info = TAB_CATEGORIES[cat]; if (!info) return;
 
-2. **Multi-channel storage**: Supabase (cloud) + localStorage (cache) + IndexedDB (logo) untuk redundansi & performa
+  // Rebuild sub-tab sesuai kategori baru
+  const sub = document.getElementById("navSubtabs");
+  sub.innerHTML = `<span class="group-label">${info.label}:</span>` +
+    info.tabs.map(t =>
+      `<button class="tab-btn" role="tab" aria-selected="false"
+       onclick="switchTab('${t[0]}')">${t[1]}</button>`
+    ).join("");
 
-3. **Multi-role**: admin (akses penuh) & user (hanya transaksi)
-
-4. **Modul lengkap**: Transaksi → Tagihan → Keuangan → Sistem, dengan 11 tab fungsional
-
-5. **Cetak dokumen**: Invoice bulanan, Linen Room, Kuitansi, Slip Gaji, Laporan Laba Rugi & Neraca
-
-6. **Mobile-first**: FAB, sticky save bar, card list di mobile, responsive breakpoints
-
-7. **UX modern**: Toast notifications, custom confirm dialog, smart search, drag-drop urutan linen, empty state ramah
-
-Setiap file memiliki peran jelas:
-- **`index.html`** — struktur & layout (1126 baris)
-- **`style.css`** — tampilan & responsivitas (1004 baris)
-- **`script.js`** — logika bisnis & interaksi (2872 baris)
-
-Ketiganya berinteraksi melalui **ID element** yang menjadi jembatan antara HTML dan JS, dengan pola konsisten: **HTML menyediakan kerangka + onclick handler → JS memanipulasi via getElementById**.
+  // Buka tab pertama kategori
+  switchTab(info.tabs[0][0]);
+}
+```
 
 ---
 
-*Dokumentasi ini menjelaskan setiap baris kode, fungsi, perhitungan, dan relasi antar file secara komprehensif untuk referensi pengembangan & maintenance.*
+### 13.3 `switchTab(tabId)` — Pindah Tab & Trigger Fungsi
+
+```javascript
+async function switchTab(tabId) {
+  // 1. Sembunyikan semua tab
+  document.querySelectorAll(".tab-content").forEach(el => el.style.display = "none");
+
+  // 2. Tampilkan tab yang diminta
+  const activeTab = document.getElementById(tabId);
+  if (activeTab) activeTab.style.display = "block";
+
+  // 3. Update aria-selected pada tombol subtab
+  document.querySelectorAll(".tab-btn").forEach(b => {
+    b.classList.remove("active");
+    b.setAttribute("aria-selected", "false");
+  });
+  const tabBtn = document.querySelector(`[onclick="switchTab('${tabId}')"]`);
+  if (tabBtn) { tabBtn.classList.add("active"); tabBtn.setAttribute("aria-selected", "true"); }
+
+  // 4. Update aria kategori yang sedang aktif
+  const catInfo = Object.entries(TAB_CATEGORIES)
+    .find(([_, v]) => v.tabs.some(t => t[0] === tabId));
+  if (catInfo) {
+    document.querySelectorAll(".cat-btn").forEach(b => {
+      const isActive = b.dataset.cat === catInfo[0];
+      b.classList.toggle("active", isActive);
+      b.setAttribute("aria-selected", isActive);
+    });
+  }
+
+  // 5. Jalankan fungsi inisialisasi khusus per tab
+  if (tabId === "tab-rekap")   await cariNotaSistem();
+  if (tabId === "tab-gaji")    tampilkanListGajiBaru();
+  if (tabId === "tab-omset")   await hitungMenejemenKeuangan();
+  if (tabId === "tab-utang")   renderDaftarUtang();
+  if (tabId === "tab-absen")   renderAbsensiTable();
+  if (tabId === "tab-backup")  renderBackupStatus();
+  if (tabId === "tab-laporan") await tampilkanLaporan();
+  if (tabId === "tab-master")  {
+    renderDaftarPelanggan();
+    renderMasterLinenTable();
+    renderMasterJenisNotaTable();
+  }
+}
+```
+
+---
+
+### 13.4 FAB Functions
+
+```javascript
+function toggleFab() {
+  const fab  = document.getElementById('fabBtn');
+  const menu = document.getElementById('fabMenu');
+  if (!fab || !menu) return;
+  const isOpen = fab.classList.toggle('open'); // CSS: rotate + warna merah
+  menu.classList.toggle('open', isOpen);       // CSS: opacity 1 + pointer-events
+  fab.setAttribute('aria-expanded', isOpen);
+}
+
+function fabAction(action) {
+  toggleFab(); // Tutup menu FAB dulu
+  switch (action) {
+    case 'invoice':
+      switchCategory('tagihan');
+      setTimeout(() => switchTab('tab-invoice'), 100); // Delay agar subtab ter-render dulu
+      break;
+    case 'gaji':
+      switchCategory('keuangan');
+      setTimeout(() => switchTab('tab-gaji'), 100);
+      break;
+    case 'absensi':
+      switchCategory('sistem');
+      setTimeout(() => switchTab('tab-absen'), 100);
+      break;
+  }
+}
+
+// Tutup FAB saat klik di luar area FAB
+document.addEventListener('click', (e) => {
+  if (fab && menu && !fab.contains(e.target) && !menu.contains(e.target)) {
+    fab.classList.remove('open');
+    menu.classList.remove('open');
+    fab.setAttribute('aria-expanded', 'false');
+  }
+});
+
+// Tutup FAB saat tekan Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && fab?.classList.contains('open')) {
+    fab.classList.remove('open');
+    menu.classList.remove('open');
+    fab.setAttribute('aria-expanded', 'false');
+  }
+});
+```
+
+---
+
+## 14. Relasi index.html ↔ script.js (Ringkasan)
+
+### Flow Login hingga App
+
+```
+User ketik username/password
+  → onclick="prosesLogin()"
+  → validasi hardcoded ("admin"/"admin" atau "user"/"user")
+  → bukaAplikasi()
+    → sembunyikan #loginPage, tampilkan #appContent
+    → set semua input tanggal = hari ini
+    → await refreshDataSistem()  ← TARIK 15 TABEL DARI SUPABASE
+      → populate variabel global (jenisNotaList, pelangganList, dll)
+      → simpan ke localStorage
+      → render semua dropdown & tabel
+    → cekPeringatanBackup()
+    → switchTab("tab-nota")
+```
+
+### Tabel Lengkap: Aksi UI → Fungsi JS → Hasil
+
+| Aksi User di HTML | Fungsi JS yang Dipanggil | Hasil |
+|---|---|---|
+| Klik "Masuk" / tekan Enter | `prosesLogin()` | Validasi, buka app |
+| Pilih pelanggan di dropdown | `cekTipePelangganInput()` | Tampil form Hotel atau RS |
+| Pilih jenis nota | `renderFormLinenInput()` | Refresh tabel linen + harga |
+| Klik "✓ Simpan Transaksi" | `simpanNotaSistem()` | Insert Supabase, refresh UI |
+| Klik "Cari" di riwayat | `cariNotaSistem()` | Query Supabase, render tabel |
+| Klik "🖲️ Hitung Invoice" | `hitungDanAmbilInvoice()` | Kompilasi nota → tampil invoice |
+| Klik "🔄 Ubah Kunci" | `toggleLockInvoice()` | Upsert Supabase, update badge |
+| Klik "🔄 Ubah Status" bayar | `toggleStatusPembayaran()` | Upsert Supabase, update badge |
+| Klik "🖨️ Cetak Linen Room" | `cetakInvoice()` | Buka popup print linen room |
+| Klik "🧾 Cetak Invoice" | `cetakInvoicePelanggan()` | Buka popup print invoice formal |
+| Klik "📥 Excel (.csv)" | `downloadLinenRoomExcel()` | Download file .xls |
+| Klik "🖨️ Cetak" kuitansi | `generateKuitansi()` | Buka popup print kuitansi |
+| Klik "Filter" pengeluaran | `hitungMenejemenKeuangan()` | Recalculate semua angka |
+| Klik "✓ Simpan" pengeluaran | `simpanBiayaOperasional()` | Insert Supabase biaya |
+| Klik "Hapus" pengeluaran | `hapusBiaya(id)` | customConfirm → delete Supabase |
+| Klik "Tandai Lunas" biaya | `tandaiLunasBiaya(id)` | Update Supabase biaya.lunas=true |
+| Klik "👁️ View Laporan" | `tampilkanLaporan()` | Render Laba Rugi + Neraca |
+| Klik "🖨️ Download PDF" laporan | `cetakLaporan()` | Buka popup print laporan |
+| Klik "✓ Simpan Utang" | `simpanUtang()` | Insert Supabase utang |
+| Klik "💸 Bayar Cicilan" | `bayarCicilan(id)` | Insert biaya cicilan + update sisa |
+| Tombol kategori nav (atas) | `switchCategory(cat)` | Rebuild subtab + pindah tab |
+| Tombol subtab | `switchTab(tabId)` | Sembunyikan semua, tampilkan 1 |
+| Klik FAB (+) | `toggleFab()` | Buka/tutup menu shortcut mobile |
+| Klik item FAB | `fabAction(action)` | Navigasi cepat ke tab tertentu |
+| Klik "✏️ Edit & Harga" pelanggan | `bukaModalEditPelanggan(id)` | Buka modal edit + harga linen |
+| Klik "💾 Simpan Pelanggan & Harga" | `simpanDetailPelanggan()` | Update Supabase pelanggan + harga |
+| Drag baris linen di modal | `initLinenDragDrop(tbody)` | Reorder DOM via HTML5 DnD |
+| Klik "💾 Simpan" konfigurasi linen jenis nota | `simpanLinenConfigJenisNota()` | Update Supabase jenis_nota.linen_config |
+| Input tanggal absensi | `renderAbsensiTable()` | Tampil tabel status absensi |
+| Klik "Simpan Absensi" | `simpanAbsensi()` | Delete+insert Supabase absensi |
+| Klik "📋 Tampilkan" gaji | `tampilkanListGajiBaru()` | Hitung upah borongan per karyawan |
+| Klik "Slip" gaji | `viewSlipGaji(kId,mulai,selesai)` | Buka popup print slip gaji |
+| Klik "Edit" gaji | `editGajiKaryawan(kId,...)` | Buka modal edit insentif/lembur |
+| Klik "📤 Export Semua Data" | `exportAllData()` | Download JSON dari 18 tabel Supabase |
+| Klik "📥 Import Data" | `importDataViaFile()` | Trigger file picker |
+| Pilih file import | `handleFileImport(input)` | Parse JSON, upsert ke Supabase |
+| Klik "🧹 Backup & Bersihkan Semua" | `backupDanBersihkan()` | Export + hapus semua transaksi |
+| Klik "📅 Backup Semua Bulan Belum" | `backupSemuaBulanBelum()` | Export + hapus bulan yang belum backup |
+| Klik "🧹 Bersihkan Nota Rusak" | `bersihkanNotaRusak()` | Hapus nota tanpa items |
+| Klik "×" di modal | `tutupModal(id)` | `display = "none"` |
+| Klik overlay modal | Event listener `.modal click` | Tutup modal jika klik di luar |
+| Klik "Ya, Lanjutkan" di confirm | `customConfirmRespond(true)` | Resolve Promise dengan `true` |
+| Klik "Batal" di confirm | `customConfirmRespond(false)` | Resolve Promise dengan `false` |
+
+---
+
+---
+
+## 15. Fungsi-Fungsi yang Belum Dicakup (Bagian Lanjutan)
+
+### 15.1 `normalizeNota(n)` — Normalisasi Data Nota dari Supabase
+
+```javascript
+function normalizeNota(n) {
+  if (!n) return n;
+  return {
+    id:          n.id,
+    notaId:      n.notaId || n.nota_id,     // Dua format: camelCase & snake_case
+    nota_id:     n.nota_id || n.notaId,
+    tanggal:     n.tanggal,
+    pelanggan_id: n.pelanggan_id,
+    pelanggan:   n.pelanggan || namaPelangganById(n.pelanggan_id) || "",
+    // Jika field pelanggan (nama string) kosong, cari dari pelangganList via ID
+    jenis:       n.jenis,
+    total:       n.total || 0,
+    items:       Array.isArray(n.items) ? n.items : []
+  };
+}
+
+function namaPelangganById(id) {
+  const p = pelangganList.find((p) => p.id === id);
+  return p ? p.name : "";
+}
+```
+
+Fungsi ini penting karena data di Supabase disimpan dengan `pelanggan_id` (angka), sedangkan banyak logika di JS memakai field `pelanggan` (nama string). `normalizeNota` menjembatani keduanya.
+
+---
+
+### 15.2 `migratePelangganKode()` — Migrasi Otomatis Kode Pelanggan
+
+```javascript
+function migratePelangganKode() {
+  let pel = [];
+  try { pel = JSON.parse(localStorage.getItem("DB_PELANGGAN")) || []; }
+  catch { pel = []; }
+  let changed = false;
+  pel.forEach((p) => {
+    if (!p.kode) {
+      p.kode = generateKodePelanggan(p.name); // Auto-generate kode jika belum ada
+      changed = true;
+    }
+  });
+  if (changed) localStorage.setItem("DB_PELANGGAN", JSON.stringify(pel));
+}
+migratePelangganKode(); // Dipanggil langsung saat file dimuat (auto-run)
+```
+
+Dipanggil sekali saat `script.js` di-load. Memastikan semua pelanggan lama (sebelum fitur kode ditambahkan) mendapatkan kode secara otomatis tanpa perlu intervensi user.
+
+---
+
+### 15.3 `tampilkanSemuaNota()` — Reset Filter Riwayat
+
+```javascript
+async function tampilkanSemuaNota() {
+  document.getElementById("cariTanggal").value = "";   // Kosongkan filter tanggal
+  document.getElementById("cariPelanggan").value = ""; // Kosongkan filter nama
+  await cariNotaSistem();                              // Tampilkan semua nota
+}
+```
+
+Dipanggil tombol "Tampilkan Semua" di tab Riwayat Nota.
+
+---
+
+### 15.4 `getLockKey(pel, bln)`, `isInvoiceLocked(pel, bln)` — Kunci Invoice
+
+```javascript
+function getLockKey(pel, bln) {
+  return `${pel}_${bln}`; // "Hotel Great_2025-01"
+}
+
+function isInvoiceLocked(pel, bln) {
+  const locks = JSON.parse(localStorage.getItem("DB_LOCKS") || "{}");
+  return locks[getLockKey(pel, bln)] === true;
+}
+```
+
+Kunci invoice berfungsi untuk **membekukan harga** — setelah invoice dikunci, `hitungDanAmbilInvoice()` tidak akan memanggil `hitungUlangNota()` sehingga harga tidak berubah meski master harga diubah.
+
+---
+
+### 15.5 `toggleLockInvoice()` — Toggle Kunci Invoice
+
+```javascript
+async function toggleLockInvoice() {
+  const pel = document.getElementById("invoicePelangganSelect").value;
+  const bln = document.getElementById("invoiceBulanSelect").value;
+  if (!bln) { toast("Pilih bulan!", "warning"); return; }
+
+  const key = getLockKey(pel, bln);
+  const newLockState = !isInvoiceLocked(pel, bln); // Balik status
+
+  const { error } = await db.from("locks").upsert(
+    { key, is_locked: newLockState },
+    { onConflict: "key" }   // Jika sudah ada key yang sama, update (bukan insert baru)
+  );
+  if (error) { toast("Gagal mengupdate kunci.", "error"); return; }
+
+  // Update UI badge & recalculate
+  updateLockBadgeDisplay(pel, bln);
+  hitungDanAmbilInvoice();
+}
+```
+
+---
+
+### 15.6 `toggleStatusPembayaran()` — Toggle Lunas / Belum Bayar
+
+```javascript
+async function toggleStatusPembayaran() {
+  isInvoicePaid = !isInvoicePaid; // Balik status lokal
+  const pel = document.getElementById("invoicePelangganSelect").value;
+  const bln = document.getElementById("invoiceBulanSelect").value;
+
+  if (bln) {
+    const key = getLockKey(pel, bln);
+    await db.from("payment_status").upsert(
+      { key, is_paid: isInvoicePaid },
+      { onConflict: "key" }
+    );
+    updateStatusBadgeOnly(); // Update badge tanpa reload
+    // Update cache localStorage juga
+    const payStat = JSON.parse(localStorage.getItem("DB_PAYMENT_STATUS")) || {};
+    payStat[key] = isInvoicePaid;
+    localStorage.setItem("DB_PAYMENT_STATUS", JSON.stringify(payStat));
+    toast(isInvoicePaid ? "Status: LUNAS." : "Status: BELUM DIBAYAR.", "info");
+    await hitungMenejemenKeuangan(); // Update Kas & Piutang
+  }
+}
+```
+
+**Efek terhadap keuangan:**
+- Saat LUNAS → `pendapatanLunas` bertambah → Kas bertambah, Piutang berkurang
+- Saat balik ke BELUM DIBAYAR → kebalikannya
+
+---
+
+### 15.7 `updateLockBadgeDisplay` & `updateStatusBadgeOnly`
+
+```javascript
+function updateLockBadgeDisplay(pel, bln) {
+  const badge = document.getElementById("lockStatusBadge");
+  if (isInvoiceLocked(pel, bln)) {
+    badge.innerText = "LOCKED";
+    badge.className = "badge-status status-locked"; // Abu-abu
+  } else {
+    badge.innerText = "UNLOCKED";
+    badge.className = "badge-status status-unlocked"; // Kuning
+  }
+}
+
+function updateStatusBadgeOnly() {
+  const badge = document.getElementById("statusCurrentBadge");
+  badge.innerText = isInvoicePaid ? "LUNAS" : "BELUM DIBAYAR";
+  badge.className = isInvoicePaid ? "badge-status status-paid" : "badge-status status-unpaid";
+}
+```
+
+Keduanya hanya update DOM badge tanpa memanggil API — cepat karena tidak ada network call.
+
+---
+
+### 15.8 `cetakInvoice()` & `downloadInvoice()` — Cetak Linen Room
+
+```javascript
+async function cetakInvoice() {
+  const pel = document.getElementById("invoicePelangganSelect").value;
+  const bln = document.getElementById("invoiceBulanSelect").value;
+  if (!bln) return toast("Pilih bulan!", "warning");
+
+  loadingThen("Menyiapkan Linen Room", async () => {
+    const logoUrl = await getLogoFromIndexedDB();
+    const html = await buildLinenRoomHTML(pel, bln, logoUrl);
+    // Buka popup baru untuk print
+    const printWindow = window.open("", "_blank", "width=1200,height=800");
+    if (!printWindow) return toast("Popup diblokir!", "warning");
+    printWindow.document.write(`<!DOCTYPE html><html>...${html}...</html>`);
+    printWindow.document.close();
+    printWindow.onload = function() {
+      printWindow.print(); // Trigger dialog print browser
+      setTimeout(() => printWindow.close(), 2000);
+    };
+  });
+}
+
+async function downloadInvoice() {
+  // Sama dengan cetakInvoice tapi download sebagai .html bukan buka popup print
+  loadingThen("Menyiapkan download Linen Room", async () => {
+    const html = await buildLinenRoomHTML(pel, bln, logoUrl);
+    const fullHTML = `<!DOCTYPE html><html>...${html}...</html>`;
+    downloadFile(fullHTML, `LinenRoom_${pel.replace(/\s/g,"_")}_${bln}.html`);
+  });
+}
+```
+
+**Pola `loadingThen`:** Tampilkan toast "...memuat..." → jalankan fungsi async → jika error, tampilkan toast error. Ini agar UI tidak terasa beku saat proses cetak berlangsung.
+
+---
+
+### 15.9 `downloadLinenRoomExcel()` — Export ke Excel (.xls)
+
+```javascript
+async function downloadLinenRoomExcel() {
+  loadingThen("Menyiapkan file Excel", async () => {
+    const html = await buildLinenRoomHTML(pel, bln, logoUrl);
+    // Parse HTML → ambil hanya elemen <table>
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = html;
+    const table = tempDiv.querySelector("table");
+    if (!table) return toast("Gagal membuat file", "error");
+
+    // Bungkus dalam format HTML khusus yang bisa dibuka Excel
+    const excelHTML = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          table { border-collapse: collapse; }
+          th { background: #1e3a5f; color: white; padding: 5px; border: 1px solid #999; }
+          td { padding: 4px; border: 1px solid #ccc; }
+        </style>
+      </head>
+      <body>${table.outerHTML}</body>
+    </html>`;
+
+    // Mime type khusus Excel (binary format lama, lebih kompatibel)
+    const blob = new Blob([excelHTML], { type: "application/vnd.ms-excel" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `LinenRoom_${pel.replace(/\s/g,"_")}_${bln}.xls`; // .xls bukan .xlsx
+    a.click();
+  });
+}
+```
+
+Ini bukan file Excel asli (XLSX), melainkan file HTML dengan MIME type Excel — teknik ini memungkinkan browser membuka file di Excel secara langsung tanpa library tambahan seperti SheetJS.
+
+---
+
+### 15.10 `cetakInvoicePelanggan()` & `downloadKuitansi()` — Cetak Invoice & Kuitansi Formal
+
+```javascript
+async function cetakInvoicePelanggan() {
+  const pel = document.getElementById("invoicePelangganSelect").value;
+  const bln = document.getElementById("invoiceBulanSelect").value;
+  if (!bln) { toast("Pilih bulan!", "warning"); return; }
+
+  loadingThen("Menyiapkan Invoice", async () => {
+    const kopHTML = await generateKopHTML();
+    const html = await buildInvoicePelangganHTML(pel, bln, kopHTML);
+    const printWindow = window.open("", "_blank", "width=800,height=600");
+    if (!printWindow) { toast("Popup diblokir!", "warning"); return; }
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.onload = function() {
+      printWindow.print();
+      setTimeout(() => printWindow.close(), 2000);
+    };
+  });
+}
+
+async function downloadKuitansi() {
+  loadingThen("Menyiapkan download Kuitansi", async () => {
+    const logoUrl = await getLogoFromIndexedDB();
+    const html = await buildKuitansiHTML(pel, bln, logoUrl);
+    downloadFile(html, `Kuitansi_${pel.replace(/\s/g,"_")}_${bln}.html`);
+  });
+}
+```
+
+**Perbedaan `cetakInvoicePelanggan` vs `cetakInvoice`:**
+- `cetakInvoice` → mencetak **Linen Room** (tabel 31 hari, detail per item per hari)
+- `cetakInvoicePelanggan` → mencetak **Invoice Formal** (ringkasan per jenis nota, dengan nomor invoice, tanda tangan)
+
+---
+
+### 15.11 `namaPeriode(bln)` — Format Nama Bulan
+
+```javascript
+function namaPeriode(bln) {
+  const [y, m] = bln.split("-");
+  return new Date(parseInt(y, 10), parseInt(m, 10) - 1, 2)
+    .toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  // "2025-01" → "Januari 2025"
+}
+```
+
+---
+
+### 15.12 `updateKopInPreview(containerId)` — Preview Kop di Halaman
+
+```javascript
+async function updateKopInPreview(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = await generateKopHTML(); // Isi container dengan HTML kop
+}
+```
+
+Dipanggil setelah `hitungDanAmbilInvoice()` untuk menampilkan kop surat di preview invoice yang terlihat di halaman (sebelum cetak).
+
+---
+
+### 15.13 `simpanBiayaOperasional()` — Simpan Pengeluaran
+
+```javascript
+async function simpanBiayaOperasional() {
+  const btn = document.getElementById('btnSimpanBiaya');
+  setBtnLoading(btn, true);
+  try {
+    const tgl   = document.getElementById("expTanggal").value;
+    // Kategori: jika "LAIN-LAIN" dipilih → pakai input custom, huruf besar
+    const kat   = document.getElementById("expKategori").value === "LAIN-LAIN"
+      ? document.getElementById("expKategoriCustom").value.toUpperCase()
+      : document.getElementById("expKategori").value;
+    const nominal = parseCurrencyValue(document.getElementById("expNominal").value);
+    const lunas   = document.getElementById("expLunas").checked; // Checkbox "Sudah Dibayar"
+
+    if (!tgl || !kat || nominal <= 0) { toast("Data tidak lengkap!", "warning"); return; }
+
+    await db.from("biaya").insert([{ tanggal: tgl, kategori: kat, nominal, lunas }]);
+    document.getElementById("expNominal").value = ""; // Reset field nominal
+    toast("Biaya disimpan!");
+    await hitungMenejemenKeuangan(); // Recalculate keuangan
+  } finally { setBtnLoading(btn, false); }
+}
+```
+
+---
+
+### 15.14 `bukaEditBiaya(id)`, `simpanEditBiaya()`, `hapusBiaya(id)`, `tandaiLunasBiaya(id)` — CRUD Pengeluaran
+
+```javascript
+// Buka modal edit
+async function bukaEditBiaya(id) {
+  const { data } = await db.from("biaya").select("*").eq("id", id);
+  const b = data?.[0]; if (!b) return;
+  // Isi form dengan data yang ada
+  document.getElementById("editBiayaId").value     = id;
+  document.getElementById("editBiayaTanggal").value = b.tanggal;
+  document.getElementById("editBiayaNominal").value = b.nominal.toLocaleString("id-ID");
+  document.getElementById("editBiayaKategori").value = b.kategori;
+  document.getElementById("editBiayaModal").style.display = "flex";
+}
+
+// Simpan perubahan
+async function simpanEditBiaya() {
+  const id      = parseInt(document.getElementById("editBiayaId").value);
+  const tanggal = document.getElementById("editBiayaTanggal").value;
+  const nominal = parseCurrencyValue(document.getElementById("editBiayaNominal").value);
+  const kategori = document.getElementById("editBiayaKategori").value === "LAIN-LAIN"
+    ? document.getElementById("editBiayaCustomText").value.toUpperCase()
+    : document.getElementById("editBiayaKategori").value;
+  await db.from("biaya").update({ tanggal, kategori, nominal }).eq("id", id);
+  tutupModalEditBiaya();
+  toast("Pengeluaran diupdate!");
+  await hitungMenejemenKeuangan();
+}
+
+// Hapus (dengan konfirmasi)
+async function hapusBiaya(id) {
+  if (!await window.customConfirm("Hapus pengeluaran ini?")) return;
+  await db.from("biaya").delete().eq("id", id);
+  toast("Pengeluaran dihapus.", "success");
+  await hitungMenejemenKeuangan();
+}
+
+// Tandai lunas tanpa hapus
+async function tandaiLunasBiaya(id) {
+  await db.from("biaya").update({ lunas: true }).eq("id", id);
+  // Efek: biaya masuk hitungan biayaDibayar → mengurangi Kas
+  toast("Biaya ditandai lunas.");
+  await hitungMenejemenKeuangan();
+}
+```
+
+---
+
+### 15.15 `bukaModalDetail(id)` — Popup Detail Nota
+
+```javascript
+function bukaModalDetail(id) {
+  const nota = (JSON.parse(localStorage.getItem("DB_NOTA") || "[]")).find(n => n.id === id);
+  if (!nota) return;
+  document.getElementById("modalNotaTitle").innerText = `Detail Nota: ${nota.notaId}`;
+  document.getElementById("modalNotaMeta").innerHTML =
+    `<strong>Pelanggan:</strong> ${nota.pelanggan} |
+     <strong>Tanggal:</strong> ${nota.tanggal} |
+     <strong>Layanan:</strong> ${nota.jenis}`;
+  const tbody = document.getElementById("modalLinenBody");
+  tbody.innerHTML = nota.items
+    .map(it => `<tr>
+      <td>${it.name}</td>
+      <td style="text-align:center;">${it.qty} ${it.unit}</td>
+      <td>${fmtRp(it.subtotal)}</td>
+    </tr>`)
+    .join("");
+  // Tambah baris total
+  tbody.innerHTML += `<tr style="background:#f8fafc;font-weight:700;">
+    <td colspan="2">TOTAL</td><td>${fmtRp(nota.total)}</td>
+  </tr>`;
+  document.getElementById("detailModal").style.display = "flex";
+}
+```
+
+Membaca dari localStorage (bukan langsung Supabase) karena data sudah ada di cache — lebih cepat.
+
+---
+
+### 15.16 `onEditJenisChange()` & `simpanPerubahanQtyNota()` — Edit Nota
+
+#### `onEditJenisChange()` — Update Harga saat Jenis Nota Diubah di Modal Edit
+
+```javascript
+function onEditJenisChange() {
+  const id = parseInt(document.getElementById("editNotaTargetId").value);
+  const nota = (JSON.parse(localStorage.getItem("DB_NOTA") || "[]")).find(n => n.id === id);
+  const pData = pelangganList.find(p => p.name === nota.pelanggan);
+  if (pData && pData.type === "RS") return; // RS tidak punya pilihan jenis
+
+  const jenisBaru = document.getElementById("editNotaJenisSelect").value;
+  const jData = jenisNotaList.find(j => j.name === jenisBaru);
+  const mult = jData ? jData.multiplier : 1;
+
+  // Update label harga di tabel dan card-list sesuai multiplier baru
+  const inputs = document.querySelectorAll(".modal-edit-qty");
+  inputs.forEach(inp => {
+    const mid = parseInt(inp.getAttribute("data-masterid"));
+    const newPrice = getHargaPerPelanggan(pData.id, mid, mult);
+    // Update label harga di tabel (desktop)
+    const labels = document.querySelectorAll(".price-label");
+    // ... update setiap label
+  });
+  hitungTotalEditPreview(); // Hitung ulang total preview
+}
+```
+
+#### `simpanPerubahanQtyNota()` — Simpan Perubahan Edit Nota
+
+```javascript
+async function simpanPerubahanQtyNota() {
+  const id = parseInt(document.getElementById("editNotaTargetId").value);
+
+  // Ambil nota dari Supabase (bukan localStorage) untuk memastikan data terbaru
+  const { data: notaList } = await db.from("nota").select("*").eq("id", id);
+  const nota = notaList[0];
+  const pData = pelangganList.find(p => p.id === nota.pelanggan_id);
+
+  nota.jenis = document.getElementById("editNotaJenisSelect").value;
+  const mult = jenisNotaList.find(j => j.name === nota.jenis)?.multiplier || 1;
+  let total = 0;
+
+  // CASE Hotel FLAT → total tetap 0
+  if (pData.type === "HOTEL" && pData.billingSystem === "FLAT" && nota.jenis === "FLAT") {
+    const items = [];
+    document.querySelectorAll(".modal-edit-qty").forEach(inp => {
+      const qty = parseInt(inp.value) || 0;
+      if (qty > 0) {
+        const mid = parseInt(inp.getAttribute("data-masterid"));
+        items.push({ idMaster: mid, name: masterLinen.find(m=>m.id===mid)?.name||"",
+                     qty, unit: "Pcs", basePrice: 0, subtotal: 0 });
+      }
+    });
+    nota.items = items; total = 0;
+  }
+  // CASE RS → hitung berdasarkan KG
+  else if (pData.type === "RS") {
+    const kg = parseFloat(document.querySelector(".modal-edit-qty")?.value) || 0;
+    if (kg <= 0) { toast("Berat harus > 0 KG!", "warning"); return; }
+    total = Math.floor(kg * pData.tarifRS);
+    nota.items = [{ idMaster: 0, name: "Cucian RS", qty: kg, unit: "KG",
+                   basePrice: pData.tarifRS, subtotal: total }];
+  }
+  // CASE Hotel reguler → hitung per item
+  else {
+    const items = [];
+    document.querySelectorAll(".modal-edit-qty").forEach(inp => {
+      const qty = parseInt(inp.value) || 0;
+      if (qty > 0) {
+        const mid = parseInt(inp.getAttribute("data-masterid"));
+        const price = getHargaPerPelanggan(pData.id, mid, mult);
+        const sub = Math.floor(qty * price); total += sub;
+        items.push({ idMaster: mid, name: masterLinen.find(m=>m.id===mid)?.name||"",
+                     qty, unit: "Pcs", basePrice: price, subtotal: sub });
+      }
+    });
+    nota.items = items;
+  }
+  nota.total = total;
+
+  // Update ke Supabase
+  await db.from("nota").update({ jenis: nota.jenis, total: nota.total, items: nota.items }).eq("id", id);
+  toast("Nota diupdate!", "success");
+  tutupModalEdit();
+  await refreshDataSistem();
+  await cariNotaSistem();
+  await hitungMenejemenKeuangan();
+}
+```
+
+---
+
+### 15.17 Master Data — CRUD Linen, Jenis Nota, Pelanggan
+
+#### Linen
+
+```javascript
+// Tambah linen baru
+async function tambahLinen() {
+  const name = document.getElementById("newLinenName").value.trim();
+  if (!name) return toast("Nama linen wajib!", "warning");
+  const { data, error } = await db.from("master_linen").insert([{ name }]).select();
+  if (!error) {
+    masterLinen.push({ id: data[0].id, name: data[0].name }); // Tambah ke cache
+    renderMasterLinenTable();
+    renderFormLinenInput(); // Refresh form input agar linen baru muncul
+  }
+}
+
+// Update nama linen
+async function updateLinen(id) {
+  const newName = document.getElementById(`linenName-${id}`).value.trim();
+  await db.from("master_linen").update({ name: newName }).eq("id", id);
+  masterLinen.find(m => m.id === id).name = newName; // Update cache
+  renderMasterLinenTable();
+  renderFormLinenInput();
+}
+
+// Hapus linen
+async function hapusLinen(id) {
+  if (!await window.customConfirm("Hapus linen ini?")) return;
+  await db.from("master_linen").delete().eq("id", id);
+  masterLinen = masterLinen.filter(m => m.id !== id); // Hapus dari cache
+  renderMasterLinenTable();
+  renderFormLinenInput();
+}
+```
+
+#### Jenis Nota
+
+```javascript
+// Tambah jenis nota baru
+async function addMasterJenisNota() {
+  const name   = document.getElementById("newJenisNotaName").value.trim().toUpperCase();
+  const mult   = parseFloat(document.getElementById("newJenisNotaMultiplier").value);
+  const forVal = document.getElementById("newJenisNotaFor").value; // "both", "flat", "reguler"
+  const forFlat    = forVal !== "reguler";
+  const forReguler = forVal !== "flat";
+  await db.from("jenis_nota").insert([{ name, multiplier: mult, for_flat: forFlat, for_reguler: forReguler }]);
+  // ...tambah ke jenisNotaList...
+}
+
+// Update jenis nota (nama, multiplier, untuk siapa)
+async function updateMasterJenisNota(idx) {
+  const jenis = jenisNotaList[idx];
+  const name   = document.getElementById(`jnName-${idx}`).value.toUpperCase();
+  const mult   = parseFloat(document.getElementById(`jnMult-${idx}`).value);
+  const forVal = document.getElementById(`jnFor-${idx}`).value;
+  await db.from("jenis_nota")
+    .update({ name, multiplier: mult, for_flat: forVal !== "reguler", for_reguler: forVal !== "flat" })
+    .eq("name", jenis.name); // Filter by nama lama (bukan id karena jenis nota tidak punya id numerik)
+  jenis.name = name; jenis.multiplier = mult;
+  // ...update cache & re-render...
+}
+```
+
+**Catatan penting:** `jenis_nota` di-filter/update menggunakan field `name` (bukan `id`) karena tabel ini menggunakan nama sebagai identifier utama.
+
+---
+
+### 15.18 Atur Linen per Jenis Nota (`linen_config`)
+
+Fitur ini memungkinkan admin memilih linen mana yang tampil di form input untuk jenis nota tertentu, dengan urutan custom.
+
+```javascript
+// Buka modal atur linen
+function bukaModalAturLinenJenisNota() {
+  renderAturLinenJenisNotaDropdown(); // Isi dropdown jenis nota
+  loadLinenConfigForJenisNota();      // Load checkboxes
+  document.getElementById("modalAturLinenJenisNota").style.display = "flex";
+}
+
+// Load checkbox linen untuk jenis nota yang dipilih
+function loadLinenConfigForJenisNota() {
+  const jenisName = document.getElementById("aturLinenJenisSelect").value;
+  const jenis = jenisNotaList.find(j => j.name === jenisName);
+  const config = jenis?.linen_config || []; // Array { id, urutan }
+  const selectedIds = new Set(config.map(c => c.id));
+  const orderMap = Object.fromEntries(config.map(c => [c.id, c.urutan]));
+
+  // Sort: linen yang sudah dikonfigurasi tampil dahulu (berurutan)
+  const sortedLinen = [...masterLinen].sort((a, b) => {
+    const oa = orderMap[a.id] ?? 999;
+    const ob = orderMap[b.id] ?? 999;
+    return oa !== ob ? oa - ob : a.name.localeCompare(b.name);
+  });
+
+  // Render checkbox dengan badge urutan
+  const html = sortedLinen.map((m, idx) => `
+    <label ...>
+      <input type="checkbox" value="${m.id}" ${selectedIds.has(m.id) ? "checked" : ""}>
+      <span>${m.name}</span>
+      ${selectedIds.has(m.id) ? `<span class="urutan-badge">${orderMap[m.id]+1}</span>` : ""}
+    </label>
+  `).join("");
+  document.getElementById("aturLinenCheckboxes").innerHTML = html;
+}
+
+// Auto-update badge urutan saat centang/uncentang
+function updateLinenConfigOrder() {
+  let urutan = 0;
+  document.querySelectorAll("#aturLinenCheckboxes label").forEach(item => {
+    const cb = item.querySelector('input[type="checkbox"]');
+    const badge = item.querySelector('.urutan-badge');
+    if (cb.checked) {
+      // Tambah/update badge nomor urutan
+      if (!badge) { /* buat badge baru */ }
+      item.querySelector('.urutan-badge').textContent = ++urutan;
+      item.style.background = '#f0fdf4'; // Hijau muda saat dicentang
+    } else {
+      if (badge) badge.remove(); // Hapus badge jika tidak dicentang
+      item.style.background = 'transparent';
+    }
+  });
+}
+
+// Simpan konfigurasi ke Supabase (field linen_config di tabel jenis_nota)
+async function simpanLinenConfigJenisNota() {
+  const jenisName = document.getElementById("aturLinenJenisSelect").value;
+  const linenConfig = [];
+  let urutan = 0;
+  document.querySelectorAll("#aturLinenCheckboxes label").forEach(label => {
+    const cb = label.querySelector('input[type="checkbox"]');
+    if (cb.checked) linenConfig.push({ id: parseInt(cb.value), urutan: urutan++ });
+  });
+  // Simpan array { id, urutan } ke field JSONB linen_config di Supabase
+  await db.from("jenis_nota").update({ linen_config: linenConfig }).eq("name", jenisName);
+  // Update cache lokal
+  const j = jenisNotaList.find(x => x.name === jenisName);
+  if (j) j.linen_config = linenConfig;
+  localStorage.setItem("DB_JENIS_NOTA", JSON.stringify(jenisNotaList));
+  toast("Linen per jenis nota disimpan.", "success");
+}
+```
+
+**Struktur `linen_config` di Supabase:** disimpan sebagai kolom JSONB di tabel `jenis_nota`:
+```json
+[
+  { "id": 1, "urutan": 0 },
+  { "id": 3, "urutan": 1 },
+  { "id": 5, "urutan": 2 }
+]
+```
+
+---
+
+### 15.19 Master Pelanggan — CRUD Lengkap
+
+#### `tambahPelangganBaru()`
+
+```javascript
+async function tambahPelangganBaru() {
+  const name    = document.getElementById("newPelangganName").value.trim();
+  const type    = document.getElementById("newPelangganType").value;     // "HOTEL" / "RS"
+  const billing = document.getElementById("newPelangganBilling").value;  // "FLAT" / "REGULER"
+  const flatRate = parseCurrencyValue(document.getElementById("newFlatRate").value);
+  const tarifRS  = parseCurrencyValue(document.getElementById("newTarifRS").value);
+  const alamat  = document.getElementById("newPelangganAlamat").value.trim();
+  const kota    = document.getElementById("newPelangganKota").value.trim();
+  const kodeRaw = document.getElementById("newPelangganKode").value.trim().toUpperCase();
+  const kode    = kodeRaw || generateKodePelanggan(name); // Auto jika kosong
+
+  await db.from("pelanggan").insert([{
+    nama: name, kode, tipe: type, billing_system: billing,
+    flat_rate: flatRate, tarif_rs: tarifRS, alamat, kota
+  }]);
+  // ...tambah ke pelangganList, re-render...
+}
+```
+
+#### `autoIsiKodeBaru()` — Auto-generate Kode saat Ketik Nama
+
+```javascript
+function autoIsiKodeBaru() {
+  const nameInput = document.getElementById("newPelangganName");
+  const kodeInput = document.getElementById("newPelangganKode");
+  // Hanya auto-isi jika field kode masih kosong (tidak tumpuk yang manual)
+  if (!kodeInput.value.trim()) {
+    kodeInput.value = generateKodePelanggan(nameInput.value);
+  }
+}
+```
+
+Dipanggil via `oninput` pada field nama pelanggan baru.
+
+#### `bukaModalEditPelanggan(id)` — Buka Modal Edit dengan Tabel Harga + DragDrop
+
+```javascript
+function bukaModalEditPelanggan(id) {
+  const p = pelangganList.find(p => p.id === id);
+  // Isi semua field modal dengan data pelanggan
+  document.getElementById("editPelangganId").value     = id;
+  document.getElementById("editPelangganName").value   = p.name;
+  document.getElementById("editPelangganKode").value   = p.kode;
+  // ...dst...
+
+  // Load counter nomor invoice saat ini
+  const counters = JSON.parse(localStorage.getItem("DB_INVOICE_COUNTER")) || {};
+  const counterKey = `${p.kode}_${new Date().getFullYear()}`;
+  document.getElementById("editPelangganCounter").value = counters[counterKey] ?? "";
+
+  // Build tabel harga linen per pelanggan
+  const savedList = getLinenPelanggan(id); // Linen yang sudah ada di konfigurasi
+  const savedIds  = new Set(savedList.map(e => e.linenId));
+  const inList    = savedList.map(e => masterLinen.find(m => m.id === e.linenId)).filter(Boolean);
+  const notInList = masterLinen.filter(m => !savedIds.has(m.id)); // Linen yang belum masuk
+  const allForRender = [...inList, ...notInList]; // Yang sudah ada di atas, sisanya di bawah
+
+  const hargaMap = hargaPelanggan[id] || {};
+  tbody.innerHTML = allForRender.map(m => {
+    const isChecked = savedIds.has(m.id);
+    const harga = hargaMap[m.id] || 0;
+    return `<tr draggable="true" class="linen-drag-row" data-linen-id="${m.id}">
+      <td class="drag-handle">⠿</td>
+      <td><input type="checkbox" class="linen-active-cb" data-linen-id="${m.id}" ${isChecked ? "checked" : ""}></td>
+      <td>${m.name}</td>
+      <td><input type="text" class="harga-input" data-linen-id="${m.id}"
+          value="${harga.toLocaleString("id-ID")}" oninput="formatCurrencyInput(this)"></td>
+    </tr>`;
+  }).join("");
+
+  initLinenDragDrop(tbody); // Aktifkan drag & drop
+  document.getElementById("modalDetailPelanggan").style.display = "flex";
+}
+```
+
+#### `simpanDetailPelanggan()` — Simpan Edit + Harga + Urutan Linen
+
+Ini fungsi terpanjang di bagian master data — melakukan 5 operasi Supabase sekaligus:
+
+```javascript
+async function simpanDetailPelanggan() {
+  const id = parseInt(document.getElementById("editPelangganId").value);
+
+  // 1. Update data dasar pelanggan
+  await db.from("pelanggan").update({
+    nama, kode, tipe, billing_system, flat_rate, tarif_rs, alamat, kota
+  }).eq("id", id);
+
+  // 2. Simpan harga linen baru
+  const hargaBaru = {};
+  document.querySelectorAll(".harga-input").forEach(inp => {
+    hargaBaru[inp.dataset.linenId] = parseCurrencyValue(inp.value);
+  });
+  await db.from("harga_pelanggan").delete().eq("pelanggan_id", id); // Hapus lama
+  await db.from("harga_pelanggan").insert(
+    Object.entries(hargaBaru).map(([linenId, harga]) =>
+      ({ pelanggan_id: id, linen_id: parseInt(linenId), harga })
+    )
+  ); // Insert baru
+
+  // 3. Simpan urutan linen dari tabel drag-drop
+  const activeLinenList = [];
+  let urutanIndex = 0;
+  document.querySelectorAll("#tabelHargaLinen tr.linen-drag-row").forEach(row => {
+    const cb = row.querySelector(".linen-active-cb");
+    if (cb && cb.checked) {
+      activeLinenList.push({ linenId: parseInt(cb.dataset.linenId), urutan: urutanIndex++ });
+    }
+  });
+  saveLinenPelanggan(id, activeLinenList); // Simpan ke localStorage
+  await db.from("linen_pelanggan").delete().eq("pelanggan_id", id); // Hapus lama di Supabase
+  await db.from("linen_pelanggan").insert(
+    activeLinenList.map(item => ({
+      pelanggan_id: id, linen_id: item.linenId, urutan: item.urutan
+    }))
+  ); // Insert baru
+
+  // 4. Update counter nomor invoice jika diisi
+  const counterVal = parseInt(document.getElementById("editPelangganCounter").value, 10);
+  if (!isNaN(counterVal)) {
+    await setCounterAwalPelanggan(kode, new Date().getFullYear(), counterVal);
+  }
+
+  // 5. Refresh semua data & UI
+  await refreshDataSistem();
+  tutupModal("modalDetailPelanggan");
+  toast("Pelanggan & harga disimpan.");
+}
+```
+
+---
+
+### 15.20 Master Karyawan — CRUD
+
+```javascript
+function renderMasterKaryawanTable() {
+  const tbody = document.getElementById("tabelMasterKaryawan");
+  tbody.innerHTML = karyawanList.map(k =>
+    `<tr>
+      <td>${k.nama}</td>
+      <td>${k.bagian || "-"}</td>
+      <td>${k.persentase}%</td>     <!-- Persentase tidak aktif dipakai di hitung gaji, hanya data -->
+      <td>
+        <button onclick="openEditKaryawanModal(${k.id})">Edit</button>
+        <button onclick="hapusKaryawan(${k.id})">Hapus</button>
+      </td>
+    </tr>`
+  ).join("");
+}
+
+// Tambah karyawan baru → insert Supabase
+async function tambahKaryawan() {
+  const nama = document.getElementById("newKaryawanNama").value.trim();
+  const bagian = document.getElementById("newKaryawanBagian").value;     // Dropdown bagian
+  const persentase = parseFloat(document.getElementById("newKaryawanPersen").value);
+  await db.from("karyawan").insert([{ nama, bagian, persentase }]);
+  // ...tambah ke cache, render...
+}
+
+// Edit karyawan via modal
+function openEditKaryawanModal(id) {
+  const k = karyawanList.find(k => k.id === id);
+  document.getElementById("editKaryawanId").value      = id;
+  document.getElementById("editKaryawanNama").value    = k.nama;
+  document.getElementById("editKaryawanBagian").value  = k.bagian || "";
+  document.getElementById("editKaryawanPersen").value  = k.persentase;
+  document.getElementById("editKaryawanModal").style.display = "flex";
+}
+
+async function updateKaryawanFromModal() {
+  const id = parseInt(document.getElementById("editKaryawanId").value);
+  const nama = document.getElementById("editKaryawanNama").value.trim();
+  const bagian = document.getElementById("editKaryawanBagian").value.trim();
+  const persentase = parseFloat(document.getElementById("editKaryawanPersen").value);
+  await db.from("karyawan").update({ nama, bagian, persentase }).eq("id", id);
+  // Update cache & render
+  const k = karyawanList.find(k => k.id === id);
+  k.nama = nama; k.bagian = bagian; k.persentase = persentase;
+  renderMasterKaryawanTable();
+  tutupEditKaryawanModal();
+}
+```
+
+---
+
+### 15.21 Pengaturan Global & Kop Surat
+
+#### `simpanPengaturanGlobal()`
+
+```javascript
+async function simpanPengaturanGlobal() {
+  const updates = {
+    tarif_internal_hotel: parseCurrencyValue(document.getElementById("settingTarifHotel").value),
+    // Tarif konversi Rp → KG untuk hitung gaji karyawan
+    ongkos_per_kg: parseCurrencyValue(document.getElementById("settingOngkosPerKg").value),
+    // Ongkos borongan per KG
+    rekening_name: document.getElementById("settingRekeningName").value.trim(),
+    rekening_no:   document.getElementById("settingRekeningNo").value.trim(),
+    bank:          document.getElementById("settingBank").value.trim(),
+    direktur:      document.getElementById("settingDirektur").value.trim(),
+    peralatan:     parseCurrencyValue(document.getElementById("settingPeralatan").value),
+    // Nilai peralatan masuk sebagai Aset di Neraca
+  };
+  await db.from("pengaturan").update(updates).eq("id", 1); // Hanya ada 1 row pengaturan
+  pengaturan = { ...pengaturan, ...updates }; // Merge ke cache
+  toast("Pengaturan disimpan!", "success");
+}
+```
+
+Tabel `pengaturan` hanya punya **1 baris** (`id = 1`). Ini pola "singleton" — tidak perlu insert, selalu update baris yang sama.
+
+#### `simpanKopSurat()`
+
+```javascript
+async function simpanKopSurat() {
+  const updates = {
+    nama: document.getElementById("kopNama").value.trim(),
+    alamat: document.getElementById("kopAlamat").value.trim(),
+    telepon: document.getElementById("kopTelepon").value.trim(),
+    email: document.getElementById("kopEmail").value.trim(),
+    kontak: document.getElementById("kopContact").value.trim(),
+  };
+  await db.from("kop").update(updates).eq("id", 1); // Singleton seperti pengaturan
+  localStorage.setItem("DB_KOP", JSON.stringify(updates)); // Update cache
+
+  // Jika ada file logo baru → simpan ke IndexedDB
+  const fileInput = document.getElementById("fileLogoInput");
+  if (fileInput.files && fileInput.files[0]) {
+    const file = fileInput.files[0];
+    if (file.size > 2 * 1024 * 1024) { toast("Ukuran logo maksimal 2 MB.", "warning"); return; }
+    await saveLogoToIndexedDB(file); // Base64 → IndexedDB
+  }
+  toast("Kop surat disimpan.", "success");
+  previewLogoFromDB(); // Refresh preview logo di halaman
+}
+```
+
+#### `previewLogoFromDB()` & `handleLogoUpload(input)`
+
+```javascript
+// Preview logo yang ada di IndexedDB saat halaman dibuka
+async function previewLogoFromDB() {
+  const logoUrl = await getLogoFromIndexedDB();
+  if (logoUrl) {
+    document.getElementById("logoPreview").src = logoUrl;
+    document.getElementById("logoPreviewContainer").style.display = "block";
+    document.getElementById("logoStatus").innerText = "Logo tersimpan";
+  } else {
+    document.getElementById("logoPreviewContainer").style.display = "none";
+    document.getElementById("logoStatus").innerText = "Belum ada logo";
+  }
+}
+
+// Preview langsung saat user pilih file (sebelum simpan)
+async function handleLogoUpload(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById("logoPreview").src = e.target.result; // Data URL sementara
+    document.getElementById("logoPreviewContainer").style.display = "block";
+    document.getElementById("logoStatus").innerText = file.name;
+  };
+  reader.readAsDataURL(file);
+}
+```
+
+---
+
+### 15.22 Modul Utang — CRUD + Bayar Cicilan
+
+#### `simpanUtang()` — Catat Utang Baru
+
+```javascript
+async function simpanUtang() {
+  const nama  = document.getElementById("utangNama").value.trim();
+  const dari  = document.getElementById("utangDari").value;    // Bulan mulai: "2025-01"
+  const sampai= document.getElementById("utangSampai").value;  // Bulan selesai: "2025-06"
+  const cicilan = parseCurrencyValue(document.getElementById("utangCicilan").value);
+  const keterangan = document.getElementById("utangKeterangan").value.trim();
+
+  if (sampai < dari) { toast("Bulan selesai tidak boleh lebih kecil!", "warning"); return; }
+
+  // Hitung total bulan cicilan
+  const [thn1,bln1] = dari.split("-").map(Number);
+  const [thn2,bln2] = sampai.split("-").map(Number);
+  const totalBulan = (thn2-thn1)*12 + (bln2-bln1) + 1;
+  // Contoh: 2025-01 s/d 2025-06 = 6 bulan
+
+  await db.from("utang").insert([{
+    nama, dari, sampai, cicilan, keterangan,
+    sisa_bulan: totalBulan, // Berapa bulan yang masih harus dibayar
+    status: "AKTIF"
+  }]);
+}
+```
+
+#### `bayarCicilan(id)` — Catat Pembayaran Cicilan
+
+```javascript
+async function bayarCicilan(id) {
+  const { data: utangList } = await db.from("utang").select("*").eq("id", id);
+  const utang = utangList[0];
+  if (!await window.customConfirm(`Bayar cicilan "${utang.nama}" sebesar ${fmtRp(utang.cicilan)}?`)) return;
+
+  // 1. Catat cicilan sebagai pengeluaran (biaya yang sudah lunas)
+  await db.from("biaya").insert([{
+    tanggal: new Date().toISOString().split("T")[0],
+    kategori: "CICILAN UTANG",
+    nominal: utang.cicilan,
+    lunas: true, // Langsung lunas
+    keterangan: `Cicilan: ${utang.nama}`
+  }]);
+
+  // 2. Kurangi sisa bulan
+  const sisaBaru = utang.sisa_bulan - 1;
+  const statusBaru = sisaBaru <= 0 ? "LUNAS" : "AKTIF"; // Lunas jika sudah 0 bulan tersisa
+  await db.from("utang").update({ sisa_bulan: Math.max(0, sisaBaru), status: statusBaru }).eq("id", id);
+
+  await refreshDataSistem();
+  await hitungMenejemenKeuangan();
+  toast("Cicilan dibayar & tercatat di pengeluaran.", "success");
+}
+```
+
+**Efek terhadap neraca:**
+- Cicilan yang dibayar → masuk `biaya` dengan `lunas: true` → mengurangi `kas`
+- Sisa cicilan berkurang → `utang` berkurang → meningkatkan `modal`
+
+#### `hitungTotalUtang()`
+
+```javascript
+function hitungTotalUtang() {
+  const utangList = getUtangList();
+  let total = 0;
+  utangList.forEach(u => {
+    if (u.status === "AKTIF") total += u.sisaBulan * u.cicilan;
+    // Contoh: 4 bulan sisa × Rp 2.000.000/bulan = Rp 8.000.000 sisa utang
+  });
+  const el = document.getElementById("boxTotalUtang");
+  if (el) el.innerText = fmtRp(total);
+}
+```
+
+---
+
+### 15.23 Gaji — `editGajiKaryawan()` & `simpanEditGajiBaru()`
+
+```javascript
+function editGajiKaryawan(kId, mulai, selesai) {
+  const h = _hasilGaji.find(h =>
+    h.karyawan.id == kId && h.periodeMulai === mulai && h.periodeSelesai === selesai
+  );
+  if (!h) return;
+
+  // Simpan referensi ke state edit aktif
+  _gajiAktif = { karyawanId: kId, periodeMulai: mulai, periodeSelesai: selesai, gajiId: h.gajiId };
+
+  document.getElementById("editGajiId").value       = h.gajiId || "";
+  document.getElementById("editGajiInsentif").value = h.insentif.toLocaleString("id-ID");
+  document.getElementById("editGajiLembur").value   = h.lembur.toLocaleString("id-ID");
+  document.getElementById("editGajiPotongan").value = h.potongan.toLocaleString("id-ID");
+  document.getElementById("editGajiModal").style.display = "flex";
+}
+
+async function simpanEditGajiBaru() {
+  const updates = {
+    insentif: parseCurrencyValue(document.getElementById("editGajiInsentif").value),
+    lembur:   parseCurrencyValue(document.getElementById("editGajiLembur").value),
+    potongan: parseCurrencyValue(document.getElementById("editGajiPotongan").value),
+  };
+
+  if (_gajiAktif.gajiId) {
+    // Sudah ada record → UPDATE
+    await db.from("gaji").update(updates).eq("id", _gajiAktif.gajiId);
+  } else {
+    // Belum ada record → INSERT baru
+    await db.from("gaji").insert([{
+      karyawan_id:    _gajiAktif.karyawanId,
+      periode_mulai:  _gajiAktif.periodeMulai,
+      periode_selesai: _gajiAktif.periodeSelesai,
+      ...updates
+    }]);
+  }
+
+  tutupEditGaji();
+  await tampilkanListGajiBaru(); // Recalculate dan re-render tabel gaji
+  toast("Data gaji disimpan.", "success");
+}
+```
+
+**Struktur tabel `gaji` di Supabase:**
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| `karyawan_id` | int | FK ke tabel karyawan |
+| `periode_mulai` | date | Tanggal mulai (mis. 2025-01-01) |
+| `periode_selesai` | date | Tanggal selesai (mis. 2025-01-14) |
+| `insentif` | numeric | Bonus tambahan |
+| `lembur` | numeric | Upah lembur |
+| `potongan` | numeric | Kas bon / potong gaji |
+
+`Total Diterima = Upah Harian + Insentif + Lembur - Potongan`
+
+---
+
+### 15.24 Backup — Fungsi Lengkap
+
+#### `renderBackupStatus()` — Tabel Status Backup per Bulan
+
+```javascript
+function renderBackupStatus() {
+  const dbNota  = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
+  const history = getBackupHistory(); // Array bulan yang sudah di-backup: ["2025-01", "2025-02"]
+  const bulanSet = new Set();
+  dbNota.forEach(n => { if (n.tanggal) bulanSet.add(n.tanggal.substring(0,7)); });
+  const bulanList = Array.from(bulanSet).sort(); // Urutkan ascending
+
+  let html = '<table class="linen-table"><thead><tr><th>Bulan</th><th>Status</th><th>Aksi</th></tr></thead><tbody>';
+  bulanList.forEach(bln => {
+    const sudah = history.includes(bln);
+    html += `<tr>
+      <td>${bln}</td>
+      <td>${sudah ? "✅ Sudah di-backup" : "❌ Belum di-backup"}</td>
+      <td>${!sudah ? `<button onclick="backupBulan('${bln}')">📤 Backup Bulan Ini</button>` : ""}</td>
+    </tr>`;
+  });
+  html += "</tbody></table>";
+  document.getElementById("backupStatusArea").innerHTML = html;
+}
+```
+
+#### `backupSemuaBulanBelum()` — Backup Semua yang Belum
+
+```javascript
+async function backupSemuaBulanBelum() {
+  const dbNota  = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
+  const history = getBackupHistory();
+  const bulanSet = new Set();
+  dbNota.forEach(n => { if (n.tanggal) bulanSet.add(n.tanggal.substring(0,7)); });
+  const belum = Array.from(bulanSet).filter(bln => !history.includes(bln));
+
+  if (belum.length === 0) { toast("Semua bulan sudah di-backup.", "info"); return; }
+
+  if (!await window.customConfirm(
+    `Backup & hapus ${belum.length} bulan: (${belum.join(", ")})?`
+  )) return;
+
+  // Export semua data ke 1 file JSON
+  const allData = { metadata: { version: "v24" }, data: {} };
+  const allKeys = ["DB_NOTA", "DB_BIAYA", "DB_LOCKS", ...];
+  allKeys.forEach(k => allData.data[k] = JSON.parse(localStorage.getItem(k)));
+  // Download file
+  const a = document.createElement("a");
+  a.download = `pelangi_backup_${belum.join("_")}.json`;
+  a.click();
+
+  // Hapus per bulan dari Supabase (dalam loop)
+  for (const b of belum) {
+    await db.from("nota").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
+    await db.from("biaya").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
+    await db.from("absensi").delete().gte("tanggal", `${b}-01`).lte("tanggal", `${b}-31`);
+    await db.from("gaji").delete().gte("periode_mulai",`${b}-01`).lte("periode_mulai",`${b}-31`);
+    await db.from("backup_history").delete().eq("bulan", b);
+    await db.from("backup_history").insert([{ bulan: b }]);
+  }
+  // Hapus dari localStorage
+  // Update backup history
+  await refreshDataSistem();
+  renderBackupStatus();
+}
+```
+
+#### `backupDanBersihkan()` — Backup Full + Hapus Semua Transaksi
+
+```javascript
+async function backupDanBersihkan() {
+  if (!await window.customConfirm(
+    "BACKUP SEMUA DATA LALU HAPUS SEMUA TRANSAKSI? Data master TETAP AMAN."
+  )) return;
+
+  // Export semua data
+  // ...download JSON...
+
+  // Hapus SEMUA transaksi dari Supabase (bukan per bulan)
+  await db.from("nota").delete().filter("id", "not.is", null);       // Hapus semua nota
+  await db.from("biaya").delete().filter("id", "not.is", null);      // Hapus semua biaya
+  await db.from("absensi").delete().gte("tanggal", "1900-01-01");    // Hapus semua absensi
+  await db.from("gaji").delete().filter("id", "not.is", null);       // Hapus semua gaji
+  await db.from("payment_status").delete().filter("key", "not.is", null);
+  await db.from("locks").delete().filter("key", "not.is", null);
+  await db.from("backup_history").delete().filter("bulan", "not.is", null);
+
+  // Kosongkan localStorage (kecuali master data)
+  const keysToClear = ["DB_NOTA", "DB_BIAYA", "DB_ABSENSI", "DB_GAJI", "DB_PAYMENT_STATUS", "DB_LOCKS"];
+  keysToClear.forEach(k => localStorage.setItem(k, JSON.stringify([])));
+  // DB_PELANGGAN, DB_MASTER_LINEN, DB_KARYAWAN, DB_PENGATURAN, dll → TIDAK dihapus
+
+  await refreshDataSistem();
+}
+```
+
+#### `bersihkanNotaRusak()` — Bersihkan Data Korup
+
+```javascript
+async function bersihkanNotaRusak() {
+  const { data: notaData } = await db.from("nota").select("*");
+
+  // Nota "rusak" = nota tanpa items (array kosong atau null)
+  const rusak = (notaData || []).filter(n =>
+    !n.items || (Array.isArray(n.items) && n.items.length === 0)
+  );
+
+  if (rusak.length > 0) {
+    for (const n of rusak) await db.from("nota").delete().eq("id", n.id);
+    toast(`${rusak.length} nota rusak dihapus.`, "success");
+  } else {
+    toast("Tidak ada nota rusak.", "info");
+  }
+
+  // Bersihkan localStorage juga
+  let localNota = JSON.parse(localStorage.getItem("DB_NOTA")) || [];
+  localNota = localNota.filter(n => n.notaId && n.items && n.items.length > 0);
+  localStorage.setItem("DB_NOTA", JSON.stringify(localNota));
+
+  await cariNotaSistem();
+}
+```
+
+---
+
+### 15.25 Event Listeners Global
+
+```javascript
+// ─── Tutup modal saat klik overlay (latar gelap) ─────────────────────────
+document.querySelectorAll(".modal").forEach(m => {
+  m.addEventListener("click", (e) => {
+    if (e.target === m) m.style.display = "none"; // Klik tepat di overlay (bukan konten)
+  });
+});
+
+// ─── Tutup FAB saat klik di luar area FAB ────────────────────────────────
+document.addEventListener("click", (e) => {
+  const fab  = document.getElementById("fabBtn");
+  const menu = document.getElementById("fabMenu");
+  if (fab && menu && !fab.contains(e.target) && !menu.contains(e.target)) {
+    fab.classList.remove("open");
+    menu.classList.remove("open");
+    fab.setAttribute("aria-expanded", "false");
+  }
+});
+
+// ─── Tutup FAB saat tekan Escape ─────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const fab  = document.getElementById("fabBtn");
+    const menu = document.getElementById("fabMenu");
+    if (fab && fab.classList.contains("open")) {
+      fab.classList.remove("open");
+      menu.classList.remove("open");
+      fab.setAttribute("aria-expanded", "false");
+    }
+  }
+});
+```
+
+---
+
+### 15.26 Aksesibilitas — `window.switchTab` Override
+
+```javascript
+// Simpan referensi fungsi asli
+const originalSwitchTab = window.switchTab;
+
+// Override dengan versi yang juga update aria-selected
+window.switchTab = async function(tabId) {
+  await originalSwitchTab(tabId); // Jalankan fungsi asli dulu
+
+  // Update aria-selected pada semua tombol subtab
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    const onclick = btn.getAttribute("onclick") || "";
+    const isActive = onclick.includes(tabId);
+    btn.setAttribute("aria-selected", isActive);
+    btn.classList.toggle("active", isActive);
+  });
+
+  // Update aria-selected pada tombol kategori
+  document.querySelectorAll(".cat-btn").forEach(btn => {
+    const isActive = TAB_CATEGORIES[btn.dataset.cat]?.tabs.some(t => t[0] === tabId);
+    btn.setAttribute("aria-selected", isActive);
+    btn.classList.toggle("active", isActive);
+  });
+};
+```
+
+Ini adalah **Decorator Pattern** — fungsi asli dibungkus (`wrapped`) dengan fungsi baru yang menambahkan perilaku aksesibilitas tanpa mengubah logika inti. `aria-selected` penting untuk screen reader agar bisa memberitahu pengguna tab mana yang sedang aktif.
+
+---
+
+## 16. Ringkasan Arsitektur Pattern
+
+| Pattern | Implementasi | Lokasi |
+|---|---|---|
+| **Singleton** | Tabel `pengaturan` & `kop` hanya 1 row | Supabase + `refreshDataSistem` |
+| **Cache-Aside** | Supabase → localStorage → variabel global | `refreshDataSistem` |
+| **Promise-based Dialog** | `customConfirm` sebagai pengganti `window.confirm()` | Awal `script.js` |
+| **Decorator Pattern** | `window.switchTab` override untuk aksesibilitas | Akhir `script.js` |
+| **Stable Key** | Nomor invoice tidak berubah setelah dibuat | `getInvoiceStableNumber` |
+| **Optimistic UI** | Badge status update langsung, sync Supabase belakang | `toggleStatusPembayaran` |
+| **Dual Storage** | IndexedDB untuk logo (besar), localStorage untuk data JSON | `saveLogoToIndexedDB` |
+| **Soft Delete** | Backup = export + hapus (bukan benar-benar dihapus permanen dari JSON) | `backupBulan` |
+| **Auto-Migration** | `migratePelangganKode()` dijalankan otomatis saat load | Awal `script.js` |
+| **Upsert** | `onConflict: "key"` untuk locks & payment_status | `toggleLockInvoice` |
+| **Parallel Fetch** | `Promise.all` untuk tarik 15 tabel sekaligus | `refreshDataSistem` |
+
+---
+

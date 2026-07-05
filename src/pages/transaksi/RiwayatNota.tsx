@@ -6,6 +6,7 @@ import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../components/AuthContext';
 import { fmtRp } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
+import InputNota from './InputNota';
 
 export default function RiwayatNota() {
   const [notaList, setNotaList] = useState<any[]>([]);
@@ -25,6 +26,7 @@ export default function RiwayatNota() {
   const navigate = useNavigate();
 
   const [detailNota, setDetailNota] = useState<any>(null); // For modal
+  const [editModalId, setEditModalId] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchPelanggan = async () => {
@@ -39,7 +41,7 @@ export default function RiwayatNota() {
     let query = supabase
       .from('nota')
       .select(`
-        id, tanggal, berat_kg, status_bayar, items,
+        id, tanggal, berat_kg, status_bayar, items, jenis,
         pelanggan (id, nama, tipe_billing, tipe, tarif_rs, tarif_flat),
         jenis_nota (id, nama)
       `)
@@ -84,16 +86,13 @@ export default function RiwayatNota() {
   };
 
   const calculateTotal = (n: any) => {
-    if (n.pelanggan?.tipe === 'RS') {
+    if (n.pelanggan?.tipe?.toUpperCase() === 'RS' && n.items === null) {
       return (n.berat_kg || 0) * (n.pelanggan?.tarif_rs || 0);
     }
-    if (n.pelanggan?.tipe_billing === 'Flat' || n.jenis_nota?.nama === 'FLAT' || n.jenis_nota?.nama === 'FLAT ASLI') {
-      return 0; // Flat dibayar bulanan
-    }
     if (n.items && Array.isArray(n.items)) {
-      return n.items.reduce((sum: number, item: any) => sum + ((item.harga || 0) * (item.qty || 0)), 0);
+      return n.items.reduce((sum: number, item: any) => sum + ((item.harga || item.basePrice || 0) * (item.qty || 0)), 0);
     }
-    return 0;
+    return n.total || 0;
   };
 
   const filteredNota = notaList.filter(n => 
@@ -151,7 +150,6 @@ export default function RiwayatNota() {
                 <th className="p-4 font-medium">Jenis Nota</th>
                 <th className="p-4 font-medium">Detail</th>
                 <th className="p-4 font-medium">Total</th>
-                <th className="p-4 font-medium">Status</th>
                 <th className="p-4 font-medium text-right">Aksi</th>
               </tr>
             </thead>
@@ -162,7 +160,7 @@ export default function RiwayatNota() {
                 <tr><td colSpan={7} className="p-4 text-center text-gray-500">Tidak ada data nota.</td></tr>
               ) : (
                 filteredNota.map((n) => {
-                  const isItem = n.pelanggan?.tipe_billing !== 'Flat' && n.pelanggan?.tipe !== 'RS';
+                  const isItem = n.pelanggan?.tipe?.toUpperCase() !== 'RS';
                   const totalTagihan = calculateTotal(n);
                   
                   return (
@@ -172,34 +170,23 @@ export default function RiwayatNota() {
                         {n.pelanggan?.nama}
                         <span className="block text-xs text-gray-500">{n.pelanggan?.tipe_billing}</span>
                       </td>
-                      <td className="p-4 text-gray-800">{n.jenis_nota?.nama || 'KILOAN'}</td>
+                      <td className="p-4 text-gray-800">{n.jenis || n.jenis_nota?.nama || 'KILOAN'}</td>
                       <td className="p-4 text-gray-800">
-                        {isItem ? (
                           <button 
                             onClick={() => setDetailNota(n)}
                             className="text-blue-600 hover:underline flex items-center gap-1 text-sm font-medium"
                           >
                             <Eye size={14} /> Lihat Item
                           </button>
-                        ) : (
-                          `${n.berat_kg} Kg`
-                        )}
                       </td>
                       <td className="p-4 font-semibold text-gray-800">
-                        {totalTagihan === 0 && n.pelanggan?.tipe_billing === 'Flat' ? '-' : fmtRp(totalTagihan)}
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          n.status_bayar === 'Lunas' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {n.status_bayar}
-                        </span>
+                        {n.pelanggan?.tipe_billing?.toUpperCase() === 'FLAT' && (n.jenis?.toUpperCase().includes('FLAT') || n.jenis_nota?.nama?.toUpperCase().includes('FLAT')) ? '-' : fmtRp(totalTagihan)}
                       </td>
                       <td className="p-4 text-right space-x-2">
                         {isAdmin && (
                           <>
                             <button 
-                              onClick={() => navigate('/transaksi/input', { state: { editNotaId: n.id } })}
+                              onClick={() => setEditModalId(n.id)}
                               className="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-50 transition-colors"
                               title="Edit Nota"
                             >
@@ -239,7 +226,32 @@ export default function RiwayatNota() {
             </div>
             
             <div className="p-4 max-h-[60vh] overflow-y-auto">
-              {detailNota.items && detailNota.items.length > 0 ? (
+              {detailNota.pelanggan?.tipe?.toUpperCase() === 'RS' ? (
+                <table className="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-gray-600">
+                      <th className="pb-2">Nama Cucian</th>
+                      <th className="pb-2 text-right">Berat</th>
+                      <th className="pb-2 text-right">Harga / Kg</th>
+                      <th className="pb-2 text-right">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                      <tr className="border-b border-gray-100">
+                        <td className="py-2 text-gray-800">Cucian RS (Kiloan)</td>
+                        <td className="py-2 text-right font-medium">{detailNota.berat_kg} Kg</td>
+                        <td className="py-2 text-right text-gray-600">{fmtRp(detailNota.pelanggan?.tarif_rs || 0)}</td>
+                        <td className="py-2 text-right font-semibold">{fmtRp(calculateTotal(detailNota))}</td>
+                      </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3} className="pt-4 text-right font-bold text-gray-800">TOTAL:</td>
+                      <td className="pt-4 text-right font-bold text-blue-600">{fmtRp(calculateTotal(detailNota))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              ) : detailNota.items && detailNota.items.length > 0 ? (
                 <table className="w-full text-left border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 text-gray-600">
@@ -252,10 +264,10 @@ export default function RiwayatNota() {
                   <tbody>
                     {detailNota.items.map((item: any, idx: number) => (
                       <tr key={idx} className="border-b border-gray-100">
-                        <td className="py-2 text-gray-800">{item.nama}</td>
+                        <td className="py-2 text-gray-800">{item.name || item.nama}</td>
                         <td className="py-2 text-right font-medium">{item.qty}</td>
-                        <td className="py-2 text-right text-gray-600">{fmtRp(item.harga)}</td>
-                        <td className="py-2 text-right font-semibold">{fmtRp(item.harga * item.qty)}</td>
+                        <td className="py-2 text-right text-gray-600">{fmtRp(item.basePrice || item.harga)}</td>
+                        <td className="py-2 text-right font-semibold">{fmtRp((item.basePrice || item.harga) * item.qty)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -269,6 +281,31 @@ export default function RiwayatNota() {
               ) : (
                 <p className="text-center text-gray-500 py-4">Tidak ada detail item.</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit Nota */}
+      {editModalId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative">
+            <div className="sticky top-0 bg-white border-b border-gray-100 p-4 flex justify-between items-center z-10">
+              <h3 className="text-xl font-bold text-gray-800">Edit Nota</h3>
+              <button onClick={() => setEditModalId(null)} className="text-gray-500 hover:bg-gray-200 p-2 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4">
+              <InputNota 
+                isModal={true} 
+                editId={editModalId} 
+                onCloseCb={() => setEditModalId(null)} 
+                onSuccessCb={() => {
+                  setEditModalId(null);
+                  fetchNota();
+                }} 
+              />
             </div>
           </div>
         </div>

@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Printer, Download } from 'lucide-react';
-import { openPrintWindow, downloadHTML } from '../../lib/printUtils';
+import { openPrintWindow, downloadHTML, generateKopHTML } from '../../lib/printUtils';
+import { toRoman, terbilang } from '../../lib/utils';
 
 interface Pelanggan {
   id: number;
   nama: string;
-  kode: string;
+  kode_invoice: string;
   tipe: string;
   tipe_billing: string;
   tarif_flat: number;
   tarif_rs: number;
+  alamat?: string;
+  kota?: string;
 }
 
 export default function Kuitansi() {
@@ -25,58 +28,30 @@ export default function Kuitansi() {
       setPelangganList(data?.map(p => ({
         id: p.id,
         nama: p.nama,
-        kode: p.kode,
+        kode_invoice: p.kode_invoice,
         tipe: p.tipe,
-        tipe_billing: p.billing_system || 'Reguler',
-        tarif_flat: p.flat_rate || 0,
-        tarif_rs: p.tarif_rs || 0
+        tipe_billing: p.tipe_billing || 'Reguler',
+        tarif_flat: p.tarif_flat || 0,
+        tarif_rs: p.tarif_rs || 0,
+        alamat: p.alamat || '',
+        kota: p.kota || ''
       })) || []);
     }
     fetchPelanggan();
   }, []);
 
-  const terbilang = (angka: number): string => {
-    const huruf = ["", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"];
-    let hasil = "";
-    if (angka < 12) {
-      hasil = huruf[angka];
-    } else if (angka < 20) {
-      hasil = terbilang(angka - 10) + " belas";
-    } else if (angka < 100) {
-      hasil = terbilang(Math.floor(angka / 10)) + " puluh " + terbilang(angka % 10);
-    } else if (angka < 200) {
-      hasil = "seratus " + terbilang(angka - 100);
-    } else if (angka < 1000) {
-      hasil = terbilang(Math.floor(angka / 100)) + " ratus " + terbilang(angka % 100);
-    } else if (angka < 2000) {
-      hasil = "seribu " + terbilang(angka - 1000);
-    } else if (angka < 1000000) {
-      hasil = terbilang(Math.floor(angka / 1000)) + " ribu " + terbilang(angka % 1000);
-    } else if (angka < 1000000000) {
-      hasil = terbilang(Math.floor(angka / 1000000)) + " juta " + terbilang(angka % 1000000);
-    } else if (angka < 1000000000000) {
-      hasil = terbilang(Math.floor(angka / 1000000000)) + " miliar " + terbilang(angka % 1000000000);
-    }
-    return hasil.trim();
-  };
-
-  const toRoman = (num: number): string => {
-    const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-    return roman[num] || "";
-  };
-
   const generateNomorKuitansi = async (pel: Pelanggan, bln: string) => {
     const [tahun, bulanStr] = bln.split("-");
     const bulanNum = parseInt(bulanStr, 10);
-    const key = `${pel.kode}_${bln}`;
-    const counterKey = `${pel.kode}_${tahun}`;
+    const key = `${pel.kode_invoice}_${bln}`;
+    const counterKey = `${pel.kode_invoice}_${tahun}`;
 
     const { data: cached } = await supabase.from('invoice_numbers').select('nomor').eq('cache_key', key).maybeSingle();
     if (cached) return cached.nomor;
 
     const { data: counterData } = await supabase.from('invoice_counter').select('nilai').eq('counter_key', counterKey).maybeSingle();
     const currentCounter = (counterData?.nilai || 0) + 1;
-    const formattedNo = `${String(currentCounter).padStart(3, "0")}/PL-${pel.kode}/${toRoman(bulanNum)}/${tahun}`;
+    const formattedNo = `${String(currentCounter).padStart(3, "0")}/PL-${pel.kode_invoice}/${toRoman(bulanNum)}/${tahun}`;
     
     await supabase.from('invoice_numbers').upsert({ cache_key: key, nomor: formattedNo });
     await supabase.from('invoice_counter').upsert({ counter_key: counterKey, nilai: currentCounter });
@@ -88,12 +63,17 @@ export default function Kuitansi() {
     const pData = pelangganList.find(p => p.nama === pelNama);
     if (!pData) return '<p>Pelanggan tidak ditemukan</p>';
 
+    const startDate = `${bln}-01`;
+    const year = parseInt(bln.split('-')[0]);
+    const month = parseInt(bln.split('-')[1]);
+    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
     const [
       { data: dbNota },
       { data: kopData },
       { data: pengData }
     ] = await Promise.all([
-      supabase.from('nota').select('*').eq('pelanggan_id', pData.id).like('tanggal', `${bln}%`).order('tanggal'),
+      supabase.from('nota').select('*').eq('pelanggan_id', pData.id).gte('tanggal', startDate).lte('tanggal', endDate).order('tanggal'),
       supabase.from('kop').select('*').limit(1),
       supabase.from('pengaturan').select('*').limit(1)
     ]);
@@ -102,7 +82,7 @@ export default function Kuitansi() {
     const kop = kopData?.[0] || {};
     const pengaturan = pengData?.[0] || {};
 
-    const isFlatCustomer = pData.tipe === "HOTEL" && pData.tipe_billing === "FLAT";
+    const isFlatCustomer = pData.tipe?.toUpperCase() === "HOTEL" && pData.tipe_billing?.toUpperCase() === "FLAT";
     const flatRate = isFlatCustomer ? pData.tarif_flat : 0;
     
     const totalsPerJenis: Record<string, number> = {};
@@ -112,7 +92,17 @@ export default function Kuitansi() {
       if (isFlatCustomer && (j === "FLAT" || j === "FLAT ASLI")) {
         // Skip
       } else {
-        totalsPerJenis[j] += nota.total || 0;
+        let t = 0;
+        if (pData.tipe === 'RS' && nota.items === null) {
+          t = (nota.berat_kg || 0) * (pData.tarif_rs || 0);
+        } else if (nota.items && Array.isArray(nota.items)) {
+          nota.items.forEach((it: any) => {
+            t += (it.harga || it.basePrice || 0) * (it.qty || 0);
+          });
+        } else {
+          t = nota.total || 0;
+        }
+        totalsPerJenis[j] += t;
       }
     });
 
@@ -167,16 +157,7 @@ export default function Kuitansi() {
     const tglCetak = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
     
     // Generate Kop HTML
-    const kopHtmlStr = kop.nama ? `
-      <div style="display:flex;align-items:center;border-bottom:3px solid #1e293b;padding-bottom:12px;margin-bottom:12px;">
-        ${kop.logo_url ? `<img src="${kop.logo_url}" style="max-height:70px;margin-right:16px;">` : ''}
-        <div>
-          <h1 style="font-size:24px;font-weight:900;color:#1e3a5f;margin-bottom:4px;letter-spacing:0.5px;">${kop.nama}</h1>
-          <p style="font-size:12px;color:#475569;margin-bottom:2px;">${kop.alamat || ''}</p>
-          <p style="font-size:12px;color:#475569;">📞 ${kop.telepon || ''} | ✉️ ${kop.email || ''}</p>
-        </div>
-      </div>
-    ` : '';
+    const kopHtmlStr = generateKopHTML(kop, kop?.logo_url);
 
     return `
       <!DOCTYPE html>
@@ -209,17 +190,23 @@ export default function Kuitansi() {
           <div class="jumlah-box">
             <span style="font-size:16px; font-weight:900;">Terbilang: Rp. ${totalTagihan.toLocaleString('id-ID')},-</span>
           </div>
-          <div style="font-size:11px; margin-top:10px; color:#475569;">
-            <p><strong>Pembayaran dapat ditransfer ke:</strong></p>
-            <p>${bankName} No. Rek ${bankAccNo} a/n ${bankAccName}</p>
-          </div>
-          
-          <div class="ttd-box">
-            <p>Surabaya, ${tglCetak}</p>
-            <p style="margin-bottom:60px; margin-top:5px;">Hormat Kami,</p>
-            <p><strong>${direktur}</strong></p>
-            <div style="border-top:1px solid #000; margin-top:4px; width:100%;"></div>
-            <p style="font-size:10px;">Direktur</p>
+
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-top: 30px; padding-top: 10px; border-top: 1px solid #cbd5e1;">
+            <div style="flex: 1; font-size: 13px;">
+                <p style="font-weight: 700; color: #1e3a5f; margin-bottom: 8px;">Payment Transfer to :</p>
+                <table style="border-collapse: collapse; font-size: 13px;">
+                    <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Bank Name</td><td style="color: #334155;">: ${bankName}</td></tr>
+                    <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Account Name</td><td style="color: #334155;">: ${bankAccName}</td></tr>
+                    <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Account Number</td><td style="color: #334155;">: ${bankAccNo}</td></tr>
+                </table>
+            </div>
+            <div style="text-align: center; min-width: 200px;">
+                <div style="margin-bottom: 2px;">Surabaya, ${tglCetak}</div>
+                <div style="font-weight: 700; margin-bottom: 60px;">Pelangi Laundry</div>
+                <div style="border-top: 1px solid #000; margin: 0 0 5px 0;"></div>
+                <div style="font-weight: 700;">${direktur}</div>
+                <div style="font-size: 12px; color: #64748b;">Direktur</div>
+            </div>
           </div>
       </body>
       </html>

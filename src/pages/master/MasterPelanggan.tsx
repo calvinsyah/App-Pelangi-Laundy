@@ -6,6 +6,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from '@dnd-kit/utilities';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
+import { CurrencyInput } from '../../components/CurrencyInput';
 
 interface Pelanggan {
   id: number;
@@ -14,6 +15,7 @@ interface Pelanggan {
   tipe: string;
   tipe_billing: string;
   tarif_flat: number;
+  tarif_rs?: number;
   alamat: string;
   kota: string;
 }
@@ -26,7 +28,7 @@ interface LinenConfigItem {
   harga: number;
 }
 
-const SortableLinenItem: React.FC<{ item: LinenConfigItem, index: number, updateHarga: (i: number, v: string) => void }> = ({ item, index, updateHarga }) => {
+const SortableLinenItem: React.FC<{ item: LinenConfigItem, index: number, updateHarga: (i: number, v: number) => void }> = ({ item, index, updateHarga }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -46,12 +48,11 @@ const SortableLinenItem: React.FC<{ item: LinenConfigItem, index: number, update
         {item.nama}
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-sm text-gray-500">Harga (Rp):</span>
-        <input
-          type="number"
+        <span className="text-sm text-gray-500">Harga:</span>
+        <CurrencyInput
           value={item.harga}
-          onChange={(e) => updateHarga(index, e.target.value)}
-          className="border border-gray-300 rounded px-3 py-1 w-32 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          onChange={(val) => updateHarga(index, val)}
+          className="border border-gray-300 rounded pr-3 py-1 w-36 focus:ring-2 focus:ring-blue-500 focus:outline-none"
         />
       </div>
     </div>
@@ -69,7 +70,7 @@ export default function MasterPelanggan() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ 
-    nama: '', kode_invoice: '', tipe: 'Hotel', tipe_billing: 'Reguler', tarif_flat: 0, alamat: '', kota: '' 
+    nama: '', kode_invoice: '', tipe: 'HOTEL', tipe_billing: 'REGULER', tarif_flat: 0, tarif_rs: 0, alamat: '', kota: '' 
   });
 
   // Linen Config Modal State
@@ -228,9 +229,9 @@ export default function MasterPelanggan() {
     }
   };
 
-  const updateHarga = (index: number, val: string) => {
+  const updateHarga = (index: number, val: number) => {
     const newItems = [...linenConfig];
-    newItems[index].harga = parseFloat(val) || 0;
+    newItems[index].harga = val || 0;
     setLinenConfig(newItems);
   };
 
@@ -246,7 +247,7 @@ export default function MasterPelanggan() {
         <button
           onClick={() => {
             setEditId(null);
-            setFormData({ nama: '', kode_invoice: '', tipe: 'Hotel', tipe_billing: 'Reguler', tarif_flat: 0, alamat: '', kota: '' });
+            setFormData({ nama: '', kode_invoice: '', tipe: 'HOTEL', tipe_billing: 'REGULER', tarif_flat: 0, tarif_rs: 0, alamat: '', kota: '' });
             setIsModalOpen(true);
           }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
@@ -293,8 +294,14 @@ export default function MasterPelanggan() {
                     <td className="p-4 text-gray-800">{p.kode_invoice}</td>
                     <td className="p-4 text-gray-800">{p.tipe}</td>
                     <td className="p-4 text-gray-800">
-                      {p.tipe_billing}
-                      {p.tipe_billing === 'Flat' && <span className="text-sm text-gray-500 block">Rp {p.tarif_flat}/Kg</span>}
+                      {p.tipe === 'RS' ? (
+                        <span className="text-sm font-medium text-gray-600 block">Rp {p.tarif_rs || p.tarif_flat || 0}/Kg</span>
+                      ) : (
+                        <>
+                          {p.tipe_billing}
+                          {p.tipe_billing === 'FLAT' && <span className="text-sm text-gray-500 block">Rp {p.tarif_flat}/Kg</span>}
+                        </>
+                      )}
                     </td>
                     <td className="p-4 text-gray-800">{p.kota}</td>
                     <td className="p-4 text-right space-x-2">
@@ -305,8 +312,9 @@ export default function MasterPelanggan() {
                             nama: p.nama, 
                             kode_invoice: p.kode_invoice, 
                             tipe: p.tipe, 
-                            tipe_billing: p.tipe_billing, 
-                            tarif_flat: p.tarif_flat, 
+                            tipe_billing: p.tipe_billing || 'REGULER', 
+                            tarif_flat: p.tarif_flat || 0, 
+                            tarif_rs: p.tarif_rs || 0,
                             alamat: p.alamat || '', 
                             kota: p.kota || '' 
                           });
@@ -357,22 +365,45 @@ export default function MasterPelanggan() {
                 </div>
                 <div className="mb-4">
                   <label className="block text-gray-700 text-sm font-bold mb-2">Tipe</label>
-                  <select value={formData.tipe} onChange={(e) => setFormData({...formData, tipe: e.target.value})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500">
-                    <option value="Hotel">Hotel</option>
+                  <select 
+                    value={formData.tipe} 
+                    onChange={(e) => {
+                      const tipe = e.target.value;
+                      setFormData({...formData, tipe, tipe_billing: tipe === 'RS' ? 'REGULER' : (formData.tipe_billing === '-' ? 'REGULER' : formData.tipe_billing)})
+                    }} 
+                    className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="HOTEL">Hotel</option>
                     <option value="RS">RS</option>
                   </select>
                 </div>
-                <div className="mb-4">
-                  <label className="block text-gray-700 text-sm font-bold mb-2">Tipe Billing</label>
-                  <select value={formData.tipe_billing} onChange={(e) => setFormData({...formData, tipe_billing: e.target.value})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500">
-                    <option value="Reguler">Reguler</option>
-                    <option value="Flat">Flat</option>
-                  </select>
-                </div>
-                {formData.tipe_billing === 'Flat' && (
+                {formData.tipe === 'HOTEL' && (
+                  <div className="mb-4">
+                    <label className="block text-gray-700 text-sm font-bold mb-2">Tipe Billing</label>
+                    <select value={formData.tipe_billing} onChange={(e) => setFormData({...formData, tipe_billing: e.target.value})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500">
+                      <option value="REGULER">Reguler</option>
+                      <option value="FLAT">Flat</option>
+                    </select>
+                  </div>
+                )}
+                {formData.tipe === 'RS' && (
                   <div className="mb-4 md:col-span-2">
-                    <label className="block text-gray-700 text-sm font-bold mb-2">Tarif Flat (Rp/Kg)</label>
-                    <input type="number" value={formData.tarif_flat} onChange={(e) => setFormData({...formData, tarif_flat: parseFloat(e.target.value)})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" required={formData.tipe_billing === 'Flat'} />
+                    <label className="block text-gray-700 text-sm font-bold mb-2">Tarif per Kg (Rp)</label>
+                    <CurrencyInput 
+                      value={formData.tarif_rs || 0} 
+                      onChange={(val) => setFormData({...formData, tarif_rs: val})} 
+                      className="shadow border rounded w-full py-2 pr-3 text-gray-700 focus:ring-2 focus:ring-blue-500" 
+                    />
+                  </div>
+                )}
+                {formData.tipe === 'HOTEL' && formData.tipe_billing === 'FLAT' && (
+                  <div className="mb-4 md:col-span-2">
+                    <label className="block text-gray-700 text-sm font-bold mb-2">Tarif Flat (/Kg)</label>
+                    <CurrencyInput 
+                      value={formData.tarif_flat || 0} 
+                      onChange={(val) => setFormData({...formData, tarif_flat: val})} 
+                      className="shadow border rounded w-full py-2 pr-3 text-gray-700 focus:ring-2 focus:ring-blue-500" 
+                    />
                   </div>
                 )}
                 <div className="mb-4 md:col-span-2">

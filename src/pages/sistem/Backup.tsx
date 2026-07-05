@@ -13,8 +13,8 @@ export default function Backup() {
 
   const tables = [
     "pelanggan", "jenis_nota", "master_linen", "karyawan", "absensi", 
-    "pengaturan", "kop", "harga_pelanggan", "nota", "biaya", 
-    "payment_status", "locks", "utang", "gaji", "backup_history"
+    "pengaturan", "kop", "harga_pelanggan", "linen_pelanggan", "nota", "biaya", 
+    "payment_status", "locks", "utang", "gaji", "invoice_numbers", "invoice_counter", "backup_history"
   ];
 
   useEffect(() => {
@@ -81,19 +81,71 @@ export default function Backup() {
         const json = JSON.parse(event.target?.result as string);
         let syncCount = 0;
 
-        for (const [table, rows] of Object.entries(json)) {
-          if (!Array.isArray(rows) || rows.length === 0) continue;
-          
-          // Delete old data before inserting if needed, or upsert directly
-          const { error } = await supabase.from(table).upsert(rows);
-          if (error) {
-            console.error(`Failed to import table ${table}:`, error);
-          } else {
-            syncCount += rows.length;
+        // FORMAT 1: exportAllData → key = nama tabel Supabase (New Format)
+        if (!json.data && (json.nota || json.pelanggan || json.biaya)) {
+          for (const [table, rows] of Object.entries(json)) {
+            if (!Array.isArray(rows) || (rows as any[]).length === 0) continue;
+            const { error } = await supabase.from(table).upsert(rows);
+            if (error) console.error(`Failed to import table ${table}:`, error);
+            else syncCount += (rows as any[]).length;
+          }
+        }
+        // FORMAT 2: backupBulan → key = DB_XXX → perlu transform ke Supabase format (Legacy Format)
+        else if (json.data) {
+          const mapTable: Record<string, string> = {
+            DB_NOTA: "nota", DB_BIAYA: "biaya", DB_PELANGGAN: "pelanggan",
+            DB_KARYAWAN: "karyawan", DB_ABSENSI: "absensi",
+            DB_JENIS_NOTA: "jenis_nota", DB_MASTER_LINEN: "master_linen",
+            DB_HARGA_PELANGGAN: "harga_pelanggan", DB_PENGATURAN: "pengaturan",
+            DB_KOP: "kop", DB_UTANG: "utang", DB_LOCKS: "locks",
+            DB_PAYMENT_STATUS: "payment_status", DB_INVOICE_NUMBERS: "invoice_numbers",
+            DB_INVOICE_COUNTER: "invoice_counter", DB_BACKUP_HISTORY: "backup_history",
+            DB_LINEN_PELANGGAN: "linen_pelanggan",
+          };
+
+          for (const [key, value] of Object.entries(json.data)) {
+            const table = mapTable[key]; 
+            if (!table) continue;
+            let supabaseRows: any[] = [];
+            const rows = value as any;
+
+            if (table === "pelanggan" && Array.isArray(rows)) {
+              supabaseRows = rows.map((r: any) => ({
+                id: r.id, 
+                nama: r.name || r.nama, 
+                kode_invoice: r.kode || r.kode_invoice,
+                tipe: r.type || r.tipe, 
+                tipe_billing: r.billingSystem || r.tipe_billing || r.billing_system || 'Reguler',
+                tarif_flat: r.flatRate || r.tarif_flat || r.flat_rate || 0, 
+                tarif_rs: r.tarifRS || r.tarif_rs || 0,
+                alamat: r.alamat || '', 
+                kota: r.kota || ''
+              }));
+            } else if (table === "harga_pelanggan") {
+              if (Array.isArray(rows)) {
+                supabaseRows = rows;
+              } else if (typeof rows === 'object' && rows !== null) {
+                // Object nested → array of rows
+                Object.entries(rows).forEach(([pid, map]: [string, any]) => {
+                  Object.entries(map).forEach(([lid, harga]) => {
+                    supabaseRows.push({ pelanggan_id: parseInt(pid), linen_id: parseInt(lid), harga });
+                  });
+                });
+              }
+            } else if (Array.isArray(rows)) {
+              supabaseRows = rows;
+            }
+
+            if (supabaseRows.length > 0) {
+              const { error } = await supabase.from(table).upsert(supabaseRows);
+              if (error) console.error(`Failed to import legacy table ${table}:`, error);
+              else syncCount += supabaseRows.length;
+            }
           }
         }
 
         toast(`Impor selesai! Berhasil menyinkronkan ${syncCount} baris.`, 'success');
+        setTimeout(() => window.location.reload(), 1500);
       } catch (err) {
         console.error(err);
         toast('Gagal membaca file atau mengimpor data.', 'error');
@@ -132,13 +184,18 @@ export default function Backup() {
       const allData: Record<string, any> = {};
       
       // Ambil transaksi hanya untuk bulan ini
+      const startDate = `${bulan}-01`;
+      const year = parseInt(bulan.split('-')[0]);
+      const month = parseInt(bulan.split('-')[1]);
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
       const [
         { data: nota }, { data: biaya }, { data: gaji }, { data: absensi }
       ] = await Promise.all([
-        supabase.from('nota').select('*').like('tanggal', `${bulan}%`),
-        supabase.from('biaya').select('*').like('tanggal', `${bulan}%`),
-        supabase.from('gaji').select('*').like('periode_mulai', `${bulan}%`),
-        supabase.from('absensi').select('*').like('tanggal', `${bulan}%`),
+        supabase.from('nota').select('*').gte('tanggal', startDate).lte('tanggal', endDate),
+        supabase.from('biaya').select('*').gte('tanggal', startDate).lte('tanggal', endDate),
+        supabase.from('gaji').select('*').gte('periode_mulai', startDate).lte('periode_mulai', endDate),
+        supabase.from('absensi').select('*').gte('tanggal', startDate).lte('tanggal', endDate),
       ]);
       allData['nota'] = nota;
       allData['biaya'] = biaya;
@@ -173,7 +230,18 @@ export default function Backup() {
     setLoading(true);
     try {
       const { data: notaData } = await supabase.from("nota").select("*");
-      const rusak = (notaData || []).filter((n) => !n.items || (Array.isArray(n.items) && n.items.length === 0));
+      
+      const rusak = (notaData || []).filter((n) => {
+        // Nota Kiloan/RS valid jika memiliki berat_kg > 0
+        const isNotaKiloanValid = n.berat_kg !== null && n.berat_kg > 0;
+        
+        // Nota Reguler/Flat valid jika memiliki items > 0
+        const isNotaItemsValid = n.items && Array.isArray(n.items) && n.items.length > 0;
+
+        // Nota dianggap rusak jika tidak valid Kiloan dan tidak valid Reguler/Flat
+        return !isNotaKiloanValid && !isNotaItemsValid;
+      });
+
       if (rusak.length > 0) {
         for (const n of rusak) {
           await supabase.from("nota").delete().eq("id", n.id);

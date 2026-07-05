@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Plus, Edit2, Trash2, Search } from 'lucide-react';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/ToastProvider';
 
 interface Linen {
   id: number;
@@ -11,6 +13,9 @@ export default function MasterLinen() {
   const [linens, setLinens] = useState<Linen[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  
+  const { confirm } = useConfirm();
+  const { toast } = useToast();
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
@@ -24,7 +29,7 @@ export default function MasterLinen() {
       .order('nama', { ascending: true });
     
     if (error) {
-      console.error('Error fetching linens:', error);
+      toast('Error fetching linens', 'error');
     } else {
       setLinens(data || []);
     }
@@ -43,24 +48,36 @@ export default function MasterLinen() {
         .update({ nama })
         .eq('id', editId);
       if (!error) {
+        toast('Berhasil mengubah linen', 'success');
         setIsModalOpen(false);
         fetchLinens();
+      } else {
+        toast('Gagal mengubah linen', 'error');
       }
     } else {
       const { error } = await supabase
         .from('master_linen')
         .insert([{ nama }]);
       if (!error) {
+        toast('Berhasil menambah linen', 'success');
         setIsModalOpen(false);
         fetchLinens();
+      } else {
+        toast('Gagal menambah linen', 'error');
       }
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Yakin ingin menghapus data ini?')) {
-      await supabase.from('master_linen').delete().eq('id', id);
-      fetchLinens();
+    const ok = await confirm('Yakin ingin menghapus data ini?');
+    if (ok) {
+      const { error } = await supabase.from('master_linen').delete().eq('id', id);
+      if (error) {
+        toast('Gagal menghapus data', 'error');
+      } else {
+        toast('Data berhasil dihapus', 'success');
+        fetchLinens();
+      }
     }
   };
 

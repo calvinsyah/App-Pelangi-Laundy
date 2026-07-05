@@ -2,8 +2,7 @@
  * Print & Download Utilities for Pelangi Laundry
  */
 import { supabase } from './supabaseClient';
-import { getInvoiceStableNumber } from './invoiceUtils';
-import { fmtRp } from './utils';
+import { fmtRp, terbilang } from './utils';
 /**
  * Generate HTML kop surat persis seperti v24
  */
@@ -11,21 +10,26 @@ export const generateKopHTML = (kop: any, logoUrl?: string | null): string => {
   if (!kop || !kop.nama) return "";
   
   const logoHtml = logoUrl 
-    ? `<img src="${logoUrl}" alt="Logo" style="max-height: 65px; margin-right: 20px;">` 
+    ? `<div style="padding-right: 20px; border-right: 1px solid #ccc; margin-right: 20px; display: flex; align-items: center; justify-content: center;">
+         <img src="${logoUrl}" alt="Logo" style="max-height: 70px;">
+       </div>`
     : '';
 
   return `
-    <div style="display: flex; align-items: center; border-bottom: 3px double #1e3a5f; padding-bottom: 12px; margin-bottom: 15px;">
+    <div style="display: flex; align-items: center; border-bottom: 3px double #1e3a5f; padding-bottom: 15px; margin-bottom: 15px;">
       ${logoHtml}
-      <div>
-        <h1 style="font-size: 26px; font-weight: 900; color: #1e3a5f; margin: 0 0 4px 0; letter-spacing: 0.5px; text-transform: uppercase;">
+      <div style="line-height: 1.4;">
+        <h1 style="font-size: 24px; font-weight: 900; color: #1e3a5f; margin: 0 0 6px 0; letter-spacing: 1px; text-transform: uppercase;">
           ${kop.nama}
         </h1>
-        <p style="font-size: 13px; color: #1e293b; margin: 0 0 2px 0;">
+        <p style="font-size: 13px; color: #334155; margin: 0;">
           ${kop.alamat || ''}
         </p>
-        <p style="font-size: 13px; color: #1e293b; margin: 0;">
-          📞 ${kop.telepon || ''} &nbsp; | &nbsp; ✉️ ${kop.email || ''} &nbsp; | &nbsp; 👤 ${kop.kontak || ''}
+        <p style="font-size: 13px; color: #334155; margin: 0;">
+          Telp: ${kop.telepon || ''} | Email: ${kop.email || ''}
+        </p>
+        <p style="font-size: 13px; color: #334155; margin: 0;">
+          Contact Person: ${kop.kontak || ''}
         </p>
       </div>
     </div>
@@ -174,7 +178,13 @@ export const buildLinenRoomHTML = async (
   notas.forEach(nota => {
     const dateObj = new Date(nota.tanggal);
     const day = dateObj.getDate();
-    if (isFlatCustomer && nota.jenis !== "FLAT" && nota.jenis !== "FLAT ASLI") return;
+    
+    // Jika pelanggan flat ambil nota flat, jika pelanggan reguler ambil nota reguler
+    if (isFlatCustomer) {
+      if (nota.jenis !== "FLAT") return;
+    } else {
+      if (nota.jenis !== "REGULER") return;
+    }
     
     if (nota.items && Array.isArray(nota.items)) {
       nota.items.forEach((it: any) => {
@@ -260,6 +270,12 @@ export const buildInvoicePelangganHTML = async (
   kopHTML: string,
   invNumber: string
 ): Promise<string> => {
+  const { data: pg } = await supabase.from('pengaturan').select('*').limit(1).maybeSingle();
+  const bankName = pg?.bank || "";
+  const bankAccName = pg?.rekening_name || "";
+  const bankAccNo = pg?.rekening_no || "";
+  const direktur = pg?.direktur || "Bagus Riadi Kurniawan";
+
   const isFlatCustomer = pel.tipe === "Hotel" && pel.tipe_billing === "Flat";
   const flatRate = isFlatCustomer ? pel.tarif_flat || 0 : 0;
 
@@ -320,7 +336,6 @@ export const buildInvoicePelangganHTML = async (
   }
 
   const tglCetak = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
-  const direktur = "Bagus Riadi Kurniawan"; // Bisa diambil dari pengaturan
 
   return `<!DOCTYPE html>
 <html lang="id">
@@ -353,14 +368,13 @@ export const buildInvoicePelangganHTML = async (
         <tr><td class="label-col">DATE</td><td>: &nbsp; ${tglCetak}</td></tr>
         <tr><td class="label-col">INVOICE NUMBER</td><td>: &nbsp; <strong>${invNumber}</strong></td></tr>
     </table>
-    <div class="divider-double"></div>
-    <h3 style="font-size:15px; margin:10px 0; color:#1e3a5f;">ATTENTION TO</h3>
-    <table class="info-table">
-        <tr><td class="label-col">CUSTOMER NAME</td><td>: &nbsp; <strong>${pel.nama}</strong></td></tr>
-        ${pel.alamat ? `<tr><td class="label-col">ADDRESS</td><td>: &nbsp; ${pel.alamat}</td></tr>` : ""}
-        ${pel.kota ? `<tr><td class="label-col">CITY</td><td>: &nbsp; ${pel.kota}</td></tr>` : ""}
-    </table>
-    <div class="divider-double"></div>
+    <div style="border-top: 1px solid #cbd5e1; margin-top: 15px; padding-top: 10px;">
+        <div style="font-weight: 700; font-size: 14px; margin-bottom: 5px;">ATTENTION TO :</div>
+        <div style="font-size: 14px; margin-bottom: 3px;">${pel.nama}</div>
+        ${pel.alamat ? `<div style="font-size: 14px; margin-bottom: 3px;">${pel.alamat}</div>` : ""}
+        ${pel.kota ? `<div style="font-size: 14px; margin-bottom: 3px;">${pel.kota}</div>` : ""}
+    </div>
+    <div style="border-top: 1px solid #cbd5e1; margin-top: 10px; margin-bottom: 15px;"></div>
     
     <table class="detail-table">
         <thead>
@@ -379,10 +393,18 @@ export const buildInvoicePelangganHTML = async (
         </tbody>
     </table>
     
-    <div style="margin-top: 40px; text-align: right;">
-        <div class="signature-box">
-            <div style="margin-bottom: 2px;">Sidoarjo, ${tglCetak}</div>
-            <div style="font-weight: 700; margin-bottom: 20px;">Pelangi Laundry</div>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-top: 30px; padding-top: 10px; border-top: 1px solid #cbd5e1;">
+        <div style="flex: 1; font-size: 13px;">
+            <p style="font-weight: 700; color: #1e3a5f; margin-bottom: 8px;">Payment Transfer to :</p>
+            <table style="border-collapse: collapse; font-size: 13px;">
+                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Bank Name</td><td style="color: #334155;">: ${bankName}</td></tr>
+                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Account Name</td><td style="color: #334155;">: ${bankAccName}</td></tr>
+                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Account Number</td><td style="color: #334155;">: ${bankAccNo}</td></tr>
+            </table>
+        </div>
+        <div style="text-align: center; min-width: 200px;">
+            <div style="margin-bottom: 2px;">Surabaya, ${tglCetak}</div>
+            <div style="font-weight: 700; margin-bottom: 60px;">Pelangi Laundry</div>
             <div class="signature-line"></div>
             <div style="font-weight: 700;">${direktur}</div>
             <div style="font-size: 12px; color: #64748b;">Direktur</div>
@@ -390,31 +412,6 @@ export const buildInvoicePelangganHTML = async (
     </div>
 </body>
 </html>`;
-};
-
-export const terbilang = (angka: number): string => {
-  const huruf = ["", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan", "sepuluh", "sebelas"];
-  let hasil = "";
-  if (angka < 12) {
-    hasil = huruf[angka];
-  } else if (angka < 20) {
-    hasil = terbilang(angka - 10) + " belas";
-  } else if (angka < 100) {
-    hasil = terbilang(Math.floor(angka / 10)) + " puluh " + terbilang(angka % 10);
-  } else if (angka < 200) {
-    hasil = "seratus " + terbilang(angka - 100);
-  } else if (angka < 1000) {
-    hasil = terbilang(Math.floor(angka / 100)) + " ratus " + terbilang(angka % 100);
-  } else if (angka < 2000) {
-    hasil = "seribu " + terbilang(angka - 1000);
-  } else if (angka < 1000000) {
-    hasil = terbilang(Math.floor(angka / 1000)) + " ribu " + terbilang(angka % 1000);
-  } else if (angka < 1000000000) {
-    hasil = terbilang(Math.floor(angka / 1000000)) + " juta " + terbilang(angka % 1000000);
-  } else if (angka < 1000000000000) {
-    hasil = terbilang(Math.floor(angka / 1000000000)) + " miliar " + terbilang(angka % 1000000000);
-  }
-  return hasil.trim();
 };
 
 export const buildSlipGajiHTML = (h: any, kopHTML: string): string => {
@@ -466,6 +463,54 @@ export const buildSlipGajiHTML = (h: any, kopHTML: string): string => {
         <td style="text-align:right;">${fmtRp(r.ongkos)}</td>
         <td style="text-align:center;">${r.hadir}</td>
         <td style="text-align:right;">${fmtRp(r.upah)}</td>
+      </tr>`).join("")}
+    </table>
+</body>
+</html>`;
+  return slipHTML;
+};
+
+export const buildSlipGajiTetapHTML = (h: any, kopHTML: string): string => {
+  if (!h) return '';
+  const k = h.karyawan;
+  
+  let slipHTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Slip Gaji Tetap ${k.nama}</title>
+  <style>
+    body { font-family:'Segoe UI',Arial,sans-serif; margin:20px; color:#1e293b; } 
+    table { width:100%; border-collapse:collapse; margin-bottom: 15px; } 
+    th { background:#1e3a5f; color:white; padding:8px; border: 1px solid #cbd5e1; } 
+    td { padding:8px; border:1px solid #cbd5e1; } 
+    @media print { body { margin:0; padding:10px; } }
+    .page-break { page-break-after: always; }
+  </style>
+</head>
+<body>
+    ${kopHTML}
+    <h2 style="text-align:center; color:#1e3a5f; text-decoration:underline;">SLIP GAJI TETAP</h2>
+    <p><strong>Nama:</strong> ${k.nama} &nbsp;|&nbsp; <strong>Bagian:</strong> ${k.bagian || "-"} &nbsp;|&nbsp; <strong>Periode:</strong> ${h.periodeMulai} s/d ${h.periodeSelesai}</p>
+    <table>
+        <tr><td>Gaji Pokok / Tetap</td><td style="text-align:right;">${fmtRp(h.gajiPokok || 0)}</td></tr>
+        <tr><td>Insentif</td><td style="text-align:right;">${fmtRp(h.insentif)}</td></tr>
+        <tr><td>Lembur</td><td style="text-align:right;">${fmtRp(h.lembur)}</td></tr>
+        <tr><td>Potongan</td><td style="text-align:right; color:red;">${fmtRp(h.potongan)}</td></tr>
+        <tr style="font-weight:700; background:#f1f5f9;"><td>Total Diterima</td><td style="text-align:right; font-size:16px;">${fmtRp(h.totalDiterima)}</td></tr>
+    </table>
+    <p style="font-style:italic; font-weight:600; padding: 10px; background:#f8fafc; border: 1px dashed #cbd5e1;">Terbilang: ${terbilang(h.totalDiterima)} rupiah</p>
+    
+    <h3 style="color:#1e3a5f; margin-top:20px;">REKAPITULASI KEHADIRAN</h3>
+    <table>
+      <tr>
+        <th>Tanggal</th>
+        <th>Status Kehadiran</th>
+      </tr>
+      ${h.rincian.map((r: any) => `
+      <tr>
+        <td style="text-align:center;">${r.tanggal}</td>
+        <td style="text-align:center;">${r.status}</td>
       </tr>`).join("")}
     </table>
 </body>

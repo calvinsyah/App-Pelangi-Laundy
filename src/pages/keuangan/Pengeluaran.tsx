@@ -4,6 +4,7 @@ import { Plus, Edit2, Trash2, Search, CheckCircle } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { fmtRp, formatCurrencyInput, parseCurrencyValue } from '../../lib/utils';
+import { CurrencyInput } from '../../components/CurrencyInput';
 
 interface Biaya {
   id: number;
@@ -40,7 +41,7 @@ export default function Pengeluaran() {
     tanggal: new Date().toISOString().split('T')[0],
     kategori: 'GAS',
     kategoriCustom: '',
-    nominal: '',
+    nominal: 0,
     lunas: true
   });
 
@@ -72,15 +73,14 @@ export default function Pengeluaran() {
       ? formData.kategoriCustom.toUpperCase()
       : formData.kategori;
 
-    const parsedNominal = parseCurrencyValue(formData.nominal);
-    if (parsedNominal <= 0) {
+    if (formData.nominal <= 0) {
       return toast('Nominal harus lebih besar dari 0', 'warning');
     }
 
     const dataToSave = {
       tanggal: formData.tanggal,
       kategori: finalKategori,
-      nominal: parsedNominal,
+      nominal: formData.nominal,
       lunas: formData.lunas
     };
 
@@ -141,7 +141,7 @@ export default function Pengeluaran() {
               tanggal: new Date().toISOString().split('T')[0],
               kategori: 'GAS',
               kategoriCustom: '',
-              nominal: '',
+              nominal: 0,
               lunas: true
             });
             setIsModalOpen(true);
@@ -243,7 +243,7 @@ export default function Pengeluaran() {
                             tanggal: b.tanggal,
                             kategori: CATEGORIES.includes(b.kategori) ? b.kategori : 'LAIN-LAIN',
                             kategoriCustom: CATEGORIES.includes(b.kategori) ? '' : b.kategori,
-                            nominal: formatCurrencyInput(b.nominal),
+                            nominal: b.nominal,
                             lunas: b.lunas
                           });
                           setIsModalOpen(true);
@@ -307,17 +307,13 @@ export default function Pengeluaran() {
                 </div>
               )}
               <div className="mb-4 relative">
-                <label className="block text-gray-700 text-sm font-bold mb-2">Nominal (Rp)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">Rp</span>
-                  <input
-                    type="text"
-                    value={formData.nominal}
-                    onChange={(e) => setFormData({...formData, nominal: formatCurrencyInput(e.target.value)})}
-                    className="shadow appearance-none border rounded w-full py-2 pl-10 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
+                <label className="block text-gray-700 text-sm font-bold mb-2">Nominal</label>
+                <CurrencyInput
+                  value={formData.nominal}
+                  onChange={(val) => setFormData({...formData, nominal: val})}
+                  className="shadow appearance-none border rounded w-full py-2 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
               </div>
               <div className="mb-6 flex items-center gap-2">
                 <input

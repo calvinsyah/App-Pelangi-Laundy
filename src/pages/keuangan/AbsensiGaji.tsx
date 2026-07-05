@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Save, Calendar, DollarSign, Edit, Printer, Download } from 'lucide-react';
-import { generateKopHTML, buildSlipGajiHTML, openPrintWindow, downloadHTML } from '../../lib/printUtils';
+import { generateKopHTML, buildSlipGajiHTML, buildSlipGajiTetapHTML, openPrintWindow, downloadHTML } from '../../lib/printUtils';
+import { CurrencyInput } from '../../components/CurrencyInput';
 
 interface Karyawan {
   id: number;
   nama: string;
   bagian: string;
-  persentase: number;
+  tipe_gaji: string;
+  gaji_pokok: number;
 }
 
 interface Absensi {
@@ -33,6 +35,7 @@ export default function AbsensiGaji() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [activeGaji, setActiveGaji] = useState<any>(null);
   const [modalForm, setModalForm] = useState({
+    gaji_pokok: 0,
     insentif: 0,
     lembur: 0,
     potongan: 0
@@ -105,23 +108,29 @@ export default function AbsensiGaji() {
       const tarifInternal = pg.tarif_internal_hotel || 7000;
       const ongkos = pg.ongkos_per_kg || 1200;
 
+      const pelangganMap = Object.fromEntries(pelangganList?.map(p => [p.id, p]) || []);
+
       const kgHarian: Record<string, number> = {};
+      const ongkosHarian: Record<string, number> = {};
+      
       notas?.forEach((nota) => {
         const tgl = nota.tanggal;
-        const pel = pelangganList?.find((p) => p.id === nota.pelanggan_id);
+        const pel = pelangganMap[nota.pelanggan_id];
         if (!pel) return;
 
-        if (pel.tipe === "HOTEL" && pel.billing_system === "FLAT" && (nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI")) return;
+        if (pel.tipe?.toUpperCase() === "HOTEL" && pel.tipe_billing?.toUpperCase() === "FLAT" && (nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI")) return;
 
         let kg = 0;
-        if (pel.tipe === "RS") {
+        if (pel.tipe?.toUpperCase() === "RS") {
           kg = nota.items?.reduce((s: number, it: any) => s + (Number(it.qty) || 0), 0) || 0;
-        } else if (pel.tipe === "HOTEL") {
+        } else if (pel.tipe?.toUpperCase() === "HOTEL") {
           kg = (nota.total || 0) / tarifInternal;
         }
 
         if (!kgHarian[tgl]) kgHarian[tgl] = 0;
         kgHarian[tgl] += kg;
+        if (!ongkosHarian[tgl]) ongkosHarian[tgl] = 0;
+        ongkosHarian[tgl] += (kg * ongkos);
       });
 
       const hasil = karyawanList.map((k) => {
@@ -134,20 +143,26 @@ export default function AbsensiGaji() {
           const tgl = current.toISOString().slice(0, 10);
           const absen = absensiList?.find((a) => a.tanggal === tgl && a.karyawan_id === k.id);
           const status = absen ? absen.status : "Hadir";
-          const kg = kgHarian[tgl] || 0;
+          
+          const totalKgHariIni = kgHarian[tgl] || 0;
+          const totalOngkosHariIni = ongkosHarian[tgl] || 0;
+          const isHadir = status === "Hadir";
+          
           let upah = 0;
-          let hadir = 0;
-
-          if (status === "Hadir") {
-            hadir = karyawanList.filter((k2) => {
+          let hadirBorongan = 0;
+          
+          if (isHadir && k.tipe_gaji !== 'Tetap') {
+            hadirBorongan = karyawanList.filter(k2 => {
+              if (k2.tipe_gaji === 'Tetap') return false;
               const a2 = absensiList?.find((a) => a.tanggal === tgl && a.karyawan_id === k2.id);
               return a2 ? a2.status === "Hadir" : true;
             }).length || 1;
-            upah = Math.floor((kg * ongkos) / hadir);
+            
+            upah = Math.floor(totalOngkosHariIni / hadirBorongan);
             totalUpah += upah;
           }
-
-          rincian.push({ tanggal: tgl, kg, ongkos, hadir, upah, status });
+          
+          rincian.push({ tanggal: tgl, kg: totalKgHariIni, ongkos: totalOngkosHariIni, hadir: isHadir ? 1 : 0, upah, status });
           current.setDate(current.getDate() + 1);
         }
 
@@ -155,11 +170,14 @@ export default function AbsensiGaji() {
         const insentif = simpan.insentif || 0;
         const lembur = simpan.lembur || 0;
         const potongan = simpan.potongan || 0;
-        const totalDiterima = Math.floor(totalUpah + insentif + lembur - potongan);
+        
+        const gajiPokok = k.tipe_gaji === 'Tetap' ? (simpan.gaji_pokok ?? k.gaji_pokok ?? 0) : 0;
+        const totalDiterima = Math.floor(totalUpah + gajiPokok + insentif + lembur - potongan);
 
         return {
           karyawan: k,
           totalUpah,
+          gajiPokok,
           insentif,
           lembur,
           potongan,
@@ -199,6 +217,7 @@ export default function AbsensiGaji() {
   const handleEditGaji = (h: any) => {
     setActiveGaji(h);
     setModalForm({
+      gaji_pokok: h.gajiPokok || 0,
       insentif: h.insentif,
       lembur: h.lembur,
       potongan: h.potongan
@@ -236,19 +255,19 @@ export default function AbsensiGaji() {
   const fmtRp = (val: number) => "Rp " + val.toLocaleString("id-ID");
 
   const getKop = async () => {
-    const { data } = await supabase.from('pengaturan').select('*').limit(1);
-    return generateKopHTML(data?.[0] || { nama: 'PELANGI LAUNDRY' });
+    const { data } = await supabase.from('kop').select('*').limit(1);
+    return generateKopHTML(data?.[0] || { nama: 'PELANGI LAUNDRY' }, data?.[0]?.logo_url);
   };
 
   const handleCetakSlip = async (h: any) => {
     const kopHTML = await getKop();
-    const html = buildSlipGajiHTML(h, kopHTML);
+    const html = h.karyawan.tipe_gaji === 'Tetap' ? buildSlipGajiTetapHTML(h, kopHTML) : buildSlipGajiHTML(h, kopHTML);
     openPrintWindow(html, `Slip Gaji - ${h.karyawan.nama}`);
   };
 
   const handleDownloadSlip = async (h: any) => {
     const kopHTML = await getKop();
-    const html = buildSlipGajiHTML(h, kopHTML);
+    const html = h.karyawan.tipe_gaji === 'Tetap' ? buildSlipGajiTetapHTML(h, kopHTML) : buildSlipGajiHTML(h, kopHTML);
     downloadHTML(html, `Slip_Gaji_${h.karyawan.nama.replace(/\s/g, '_')}_${h.periodeMulai}_${h.periodeSelesai}.html`);
   };
 
@@ -351,7 +370,9 @@ export default function AbsensiGaji() {
               <thead>
                 <tr className="border-b border-gray-200 text-gray-600 font-semibold">
                   <th className="pb-2">Nama</th>
+                  <th className="pb-2">Tipe Gaji</th>
                   <th className="pb-2">Upah Kerja</th>
+                  <th className="pb-2">Gaji Tetap</th>
                   <th className="pb-2">Insentif</th>
                   <th className="pb-2">Lembur</th>
                   <th className="pb-2">Potongan</th>
@@ -363,7 +384,13 @@ export default function AbsensiGaji() {
                 {salaryResults.map((h, i) => (
                   <tr key={i} className="border-b border-gray-50">
                     <td className="py-3 text-gray-800 font-semibold">{h.karyawan.nama}</td>
-                    <td className="py-3 text-gray-800">{fmtRp(h.totalUpah)}</td>
+                    <td className="py-3 text-gray-800 text-xs">
+                      <span className={`px-2 py-1 rounded-full ${h.karyawan.tipe_gaji === 'Tetap' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                        {h.karyawan.tipe_gaji || 'Borongan'}
+                      </span>
+                    </td>
+                    <td className="py-3 text-gray-800">{h.karyawan.tipe_gaji === 'Tetap' ? '-' : fmtRp(h.totalUpah)}</td>
+                    <td className="py-3 text-gray-800">{h.karyawan.tipe_gaji === 'Tetap' ? fmtRp(h.gajiPokok || 0) : '-'}</td>
                     <td className="py-3 text-gray-800">{fmtRp(h.insentif)}</td>
                     <td className="py-3 text-gray-800">{fmtRp(h.lembur)}</td>
                     <td className="py-3 text-red-600">{fmtRp(h.potongan)}</td>
@@ -405,30 +432,37 @@ export default function AbsensiGaji() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h3 className="text-xl font-bold mb-4">Edit Gaji: {activeGaji?.karyawan.nama}</h3>
             <form onSubmit={handleSaveModalGaji}>
+              {activeGaji?.karyawan.tipe_gaji === 'Tetap' && (
+                <div className="mb-4">
+                  <label className="block text-gray-700 text-sm font-bold mb-2">Gaji Pokok / Tetap (Periode Ini)</label>
+                  <CurrencyInput
+                    value={modalForm.gaji_pokok}
+                    onChange={(val) => setModalForm({...modalForm, gaji_pokok: val})}
+                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
               <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">Insentif (Rp)</label>
-                <input
-                  type="number"
+                <label className="block text-gray-700 text-sm font-bold mb-2">Insentif</label>
+                <CurrencyInput
                   value={modalForm.insentif}
-                  onChange={(e) => setModalForm({...modalForm, insentif: parseInt(e.target.value) || 0})}
+                  onChange={(val) => setModalForm({...modalForm, insentif: val})}
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">Lembur (Rp)</label>
-                <input
-                  type="number"
+                <label className="block text-gray-700 text-sm font-bold mb-2">Lembur</label>
+                <CurrencyInput
                   value={modalForm.lembur}
-                  onChange={(e) => setModalForm({...modalForm, lembur: parseInt(e.target.value) || 0})}
+                  onChange={(val) => setModalForm({...modalForm, lembur: val})}
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="mb-6">
-                <label className="block text-gray-700 text-sm font-bold mb-2">Potongan (Rp)</label>
-                <input
-                  type="number"
+                <label className="block text-gray-700 text-sm font-bold mb-2">Potongan</label>
+                <CurrencyInput
                   value={modalForm.potongan}
-                  onChange={(e) => setModalForm({...modalForm, potongan: parseInt(e.target.value) || 0})}
+                  onChange={(val) => setModalForm({...modalForm, potongan: val})}
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>

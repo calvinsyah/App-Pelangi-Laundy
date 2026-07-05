@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { fmtRp } from '../../lib/utils';
 
 export default function Laporan() {
   const [data, setData] = useState({
@@ -19,22 +20,30 @@ export default function Laporan() {
   const fetchLaporan = async () => {
     setLoading(true);
     try {
+      const startDate = `${periode}-01`;
+      const year = parseInt(periode.split('-')[0]);
+      const month = parseInt(periode.split('-')[1]);
+      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+
       const [
         { data: notas },
         { data: biayas },
         { data: paymentStatuses },
         { data: utangs },
-        { data: pengaturan }
+        { data: pengaturan },
+        { data: pelanggan }
       ] = await Promise.all([
-        supabase.from('nota').select('*').like('tanggal', `${periode}%`),
-        supabase.from('biaya').select('*').like('tanggal', `${periode}%`),
+        supabase.from('nota').select('*').gte('tanggal', startDate).lte('tanggal', endDate),
+        supabase.from('biaya').select('*').gte('tanggal', startDate).lte('tanggal', endDate),
         supabase.from('payment_status').select('*'),
         supabase.from('utang').select('*'),
-        supabase.from('pengaturan').select('*').limit(1)
+        supabase.from('pengaturan').select('*').limit(1),
+        supabase.from('pelanggan').select('id, nama')
       ]);
 
       const pg = pengaturan?.[0] || {};
       const peralatan = pg.peralatan || 0;
+      const pelangganMap = Object.fromEntries(pelanggan?.map(p => [p.id, p]) || []);
 
       const paidMap: Record<string, boolean> = {};
       paymentStatuses?.forEach(ps => {
@@ -45,13 +54,39 @@ export default function Laporan() {
       let lunasTotal = 0;
       let piutang = 0;
 
+      // Group notas by pelanggan_id
+      const notaByPelanggan: Record<number, any[]> = {};
       notas?.forEach(n => {
-        penjualan += n.total || 0;
-        const key = `${n.pelanggan_id}_${periode}`;
+        if (!notaByPelanggan[n.pelanggan_id]) notaByPelanggan[n.pelanggan_id] = [];
+        notaByPelanggan[n.pelanggan_id].push(n);
+      });
+
+      Object.keys(notaByPelanggan).forEach(pidStr => {
+        const pid = parseInt(pidStr, 10);
+        const p = pelangganMap[pid];
+        if (!p) return;
+        
+        const isFlat = p.tipe?.toUpperCase() === "HOTEL" && p.tipe_billing?.toUpperCase() === "FLAT";
+        let customerTotal = 0;
+        const arrNota = notaByPelanggan[pid];
+        let hasTransaction = false;
+        
+        arrNota.forEach(n => {
+          hasTransaction = true;
+          if (isFlat && (n.jenis === "FLAT" || n.jenis === "FLAT ASLI")) return;
+          customerTotal += n.total || 0;
+        });
+        
+        if (isFlat && hasTransaction) {
+          customerTotal += p.tarif_flat || 0;
+        }
+        
+        penjualan += customerTotal;
+        const key = `${p.nama}_${periode}`;
         if (paidMap[key]) {
-          lunasTotal += n.total || 0;
+          lunasTotal += customerTotal;
         } else {
-          piutang += n.total || 0;
+          piutang += customerTotal;
         }
       });
 
@@ -109,8 +144,6 @@ export default function Laporan() {
   useEffect(() => {
     fetchLaporan();
   }, [periode]);
-
-  const fmtRp = (val: number) => "Rp " + Math.floor(val).toLocaleString("id-ID");
 
   const handlePrint = () => {
     window.print();

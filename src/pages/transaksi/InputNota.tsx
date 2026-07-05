@@ -10,10 +10,17 @@ interface ConfiguredLinen {
   qty: number;
 }
 
-export default function InputNota() {
+interface InputNotaProps {
+  editId?: string | number;
+  isModal?: boolean;
+  onSuccessCb?: () => void;
+  onCloseCb?: () => void;
+}
+
+export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, onCloseCb }: InputNotaProps = {}) {
   const location = useLocation();
   const navigate = useNavigate();
-  const editNotaId = location.state?.editNotaId;
+  const editNotaId = propsEditId || location.state?.editNotaId;
 
   const [pelangganList, setPelangganList] = useState<any[]>([]);
   const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
@@ -32,6 +39,20 @@ export default function InputNota() {
   const [baseLinenConfig, setBaseLinenConfig] = useState<ConfiguredLinen[]>([]);
   const [displayedLinen, setDisplayedLinen] = useState<ConfiguredLinen[]>([]);
   const [editItems, setEditItems] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   // Fetch Nota for Editing
   useEffect(() => {
@@ -75,14 +96,14 @@ export default function InputNota() {
   }, []);
 
   const selectedPelanggan = pelangganList.find(p => p.id.toString() === formData.pelanggan_id);
-  const isRS = selectedPelanggan?.tipe === 'RS';
-  const isFlat = selectedPelanggan?.tipe_billing === 'Flat';
+  const isRS = selectedPelanggan?.tipe?.toUpperCase() === 'RS';
+  const isFlat = selectedPelanggan?.tipe_billing?.toUpperCase() === 'FLAT';
 
   // Logika Filter Jenis Nota berdasarkan Tipe Pelanggan
   const getFilteredJenisNota = () => {
     if (!selectedPelanggan) return jenisNotaList;
     if (isRS) return jenisNotaList.filter(j => j.nama === 'KILOAN');
-    if (selectedPelanggan.tipe === 'Hotel') {
+    if (selectedPelanggan.tipe?.toUpperCase() === 'HOTEL') {
       if (isFlat) return jenisNotaList.filter(j => j.berlaku_flat);
       return jenisNotaList.filter(j => j.berlaku_reguler);
     }
@@ -173,8 +194,8 @@ export default function InputNota() {
     // Inject edit quantities if editing
     if (editItems) {
       finalLinen = finalLinen.map(l => {
-        const found = editItems.find((ei: any) => ei.linen_id === l.linen_id);
-        return found ? { ...l, qty: found.qty, harga: found.harga } : l; // retain historical price if editing
+        const found = editItems.find((ei: any) => (ei.linen_id === l.linen_id) || (ei.idMaster === l.linen_id));
+        return found ? { ...l, qty: found.qty, harga: found.harga || found.basePrice || l.harga } : l; // retain historical price if editing
       });
     }
 
@@ -203,9 +224,9 @@ export default function InputNota() {
     }));
 
     let valid = true;
-    if (isFlat || isRS) {
+    if (isRS) {
       if (formData.berat_kg <= 0) {
-        setError('Berat (Kg) harus lebih dari 0 untuk nota Kiloan/Flat.');
+        setError('Berat (Kg) harus lebih dari 0 untuk nota Kiloan/RS.');
         valid = false;
       }
     } else {
@@ -221,14 +242,23 @@ export default function InputNota() {
     }
 
     try {
+      const selectedPelangganObj = pelangganList.find(p => p.id.toString() === formData.pelanggan_id);
+      let calculatedTotal = 0;
+      if (isRS) {
+        calculatedTotal = formData.berat_kg * (selectedPelangganObj?.tarif_rs || 0);
+      } else {
+        calculatedTotal = validItems.reduce((sum, item) => sum + (item.harga * item.qty), 0);
+      }
+
       const notaData = {
         tanggal: formData.tanggal,
         pelanggan_id: parseInt(formData.pelanggan_id),
         jenis_nota_id: parseInt(formData.jenis_nota_id) === 0 ? null : parseInt(formData.jenis_nota_id),
         jenis: jenisNotaList.find(j => j.id.toString() === formData.jenis_nota_id)?.nama || 'KILOAN',
-        berat_kg: (isFlat || isRS) ? formData.berat_kg : null,
+        berat_kg: (isRS) ? formData.berat_kg : null,
         status_bayar: 'Belum',
-        items: (isFlat || isRS) ? null : validItems
+        total: calculatedTotal,
+        items: (isRS) ? null : validItems
       };
 
       if (editNotaId) {
@@ -239,7 +269,8 @@ export default function InputNota() {
           .eq('id', editNotaId);
         if (notaErr) throw notaErr;
         setSuccess('Nota berhasil diperbarui!');
-        setTimeout(() => navigate('/transaksi/riwayat'), 1500);
+        if (onSuccessCb) onSuccessCb();
+        else setTimeout(() => navigate('/transaksi/riwayat'), 1500);
       } else {
         const nota_id = `${formData.tanggal.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`;
         const { error: notaErr } = await supabase
@@ -248,13 +279,84 @@ export default function InputNota() {
         if (notaErr) throw notaErr;
         setSuccess('Nota berhasil disimpan!');
         setFormData({ ...formData, berat_kg: 0 });
-        setDisplayedLinen(displayedLinen.map(c => ({...c, qty: 0})));
+        setDisplayedLinen(displayedLinen.map(l => ({ ...l, qty: 0 })));
+        if (onSuccessCb) onSuccessCb();
       }
     } catch (err: any) {
       setError(err.message || 'Terjadi kesalahan');
     }
     setLoading(false);
   };
+
+  if (isModal) {
+    return (
+      <div className="bg-white p-4">
+        {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm">{error}</div>}
+        {success && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded shadow-sm">{success}</div>}
+
+        <form onSubmit={handleSubmit}>
+          {/* Header info readonly for Modal Edit */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div>
+              <label className="block text-gray-700 text-sm font-bold mb-2">Tanggal</label>
+              <input type="date" value={formData.tanggal} disabled className="shadow border rounded w-full py-2 px-3 bg-gray-100 text-gray-500" />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-sm font-bold mb-2">Pelanggan</label>
+              <select value={formData.pelanggan_id} disabled className="shadow border rounded w-full py-2 px-3 bg-gray-100 text-gray-500">
+                {pelangganList.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-700 text-sm font-bold mb-2">Jenis Nota</label>
+              <select value={formData.jenis_nota_id} disabled className="shadow border rounded w-full py-2 px-3 bg-gray-100 text-gray-500">
+                <option value="0">KILOAN</option>
+                {filteredJenisNotaList.map(j => <option key={j.id} value={j.id}>{j.nama}</option>)}
+              </select>
+            </div>
+            
+            {isRS && (
+              <div>
+                <label className="block text-gray-700 text-sm font-bold mb-2">Berat (Kg)</label>
+                <input type="number" step="0.1" value={formData.berat_kg} onChange={(e) => setFormData({...formData, berat_kg: parseFloat(e.target.value)})} className="shadow border rounded w-full py-2 px-3 focus:ring-2 focus:ring-blue-500 bg-blue-50 border-blue-200" required />
+              </div>
+            )}
+          </div>
+
+          {(!isRS) && formData.pelanggan_id && displayedLinen.length > 0 && (
+            <div className="mb-6 max-h-[50vh] overflow-y-auto pr-2">
+              <h3 className="text-lg font-bold text-gray-700 mb-4 pb-2 border-b">Item Linen (Kuantitas)</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {displayedLinen.map((item, index) => (
+                  <div key={item.linen_id} className="border border-gray-200 p-4 rounded-lg bg-gray-50 flex flex-col hover:border-blue-300 transition-colors">
+                    <span className="font-bold text-gray-800 mb-1">{item.nama}</span>
+                    <span className="text-sm text-blue-600 font-medium mb-3">@ {item.harga.toLocaleString('id-ID')}</span>
+                    <input 
+                      type="number" 
+                      min="0"
+                      value={item.qty === 0 ? '' : item.qty}
+                      onChange={(e) => updateQty(index, e.target.value)}
+                      className="shadow border rounded w-full py-2 px-3 focus:ring-2 focus:ring-blue-500 mt-auto"
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+            {onCloseCb && (
+              <button type="button" onClick={onCloseCb} className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 font-medium">Batal</button>
+            )}
+            <button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded focus:outline-none focus:shadow-outline transition-colors disabled:opacity-50">
+              {loading ? 'Menyimpan...' : 'Simpan Perubahan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -297,7 +399,7 @@ export default function InputNota() {
               </select>
             </div>
             
-            {(isFlat || isRS) && (
+            {isRS && (
               <div>
                 <label className="block text-gray-700 text-sm font-bold mb-2">Berat (Kg)</label>
                 <input type="number" step="0.1" value={formData.berat_kg} onChange={(e) => setFormData({...formData, berat_kg: parseFloat(e.target.value)})} className="shadow border rounded w-full py-2 px-3 focus:ring-2 focus:ring-blue-500 bg-blue-50 border-blue-200" required />
@@ -308,7 +410,7 @@ export default function InputNota() {
             )}
           </div>
 
-          {(!isFlat && !isRS) && formData.pelanggan_id && displayedLinen.length > 0 && (
+          {(!isRS) && formData.pelanggan_id && displayedLinen.length > 0 && (
             <div className="mb-6">
               <h3 className="text-lg font-bold text-gray-700 mb-4 pb-2 border-b">Item Linen (Kuantitas)</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -335,7 +437,7 @@ export default function InputNota() {
             </div>
           )}
 
-          {(!isFlat && !isRS) && formData.pelanggan_id && displayedLinen.length === 0 && formData.jenis_nota_id && (
+          {(!isRS) && formData.pelanggan_id && displayedLinen.length === 0 && formData.jenis_nota_id && (
             <div className="text-center p-6 bg-gray-50 rounded-lg border border-gray-200 mb-6 text-gray-500">
               Belum ada linen yang diatur untuk pelanggan atau jenis nota ini. <br/>
               Silakan atur di Master Pelanggan atau Master Jenis Nota.

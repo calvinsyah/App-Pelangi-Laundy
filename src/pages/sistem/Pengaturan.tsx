@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Save, Upload } from 'lucide-react';
-
+import { CurrencyInput } from '../../components/CurrencyInput';
 export default function Pengaturan() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
@@ -134,20 +134,18 @@ export default function Pengaturan() {
           <h3 className="text-lg font-bold text-gray-700 mb-4 pb-2 border-b border-gray-100">⚙️ Pengaturan Global</h3>
           <form onSubmit={handleSaveSettings} className="space-y-4">
             <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">Tarif Internal Hotel (Rp)</label>
-              <input
-                type="number"
+              <label className="block text-gray-700 text-sm font-bold mb-2">Tarif Internal Hotel</label>
+              <CurrencyInput
                 value={pgSettings.tarif_internal_hotel}
-                onChange={(e) => setPgSettings({...pgSettings, tarif_internal_hotel: parseInt(e.target.value) || 0})}
+                onChange={(val) => setPgSettings({...pgSettings, tarif_internal_hotel: val})}
                 className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2">Ongkos per Kg Gaji (Rp)</label>
-              <input
-                type="number"
+              <label className="block text-gray-700 text-sm font-bold mb-2">Ongkos per Kg Gaji</label>
+              <CurrencyInput
                 value={pgSettings.ongkos_per_kg}
-                onChange={(e) => setPgSettings({...pgSettings, ongkos_per_kg: parseInt(e.target.value) || 0})}
+                onChange={(val) => setPgSettings({...pgSettings, ongkos_per_kg: val})}
                 className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -157,6 +155,23 @@ export default function Pengaturan() {
                 type="text"
                 value={pgSettings.direktur}
                 onChange={(e) => setPgSettings({...pgSettings, direktur: e.target.value})}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-sm font-bold mb-2">Nilai Aset Peralatan</label>
+              <CurrencyInput
+                value={pgSettings.peralatan}
+                onChange={(val) => setPgSettings({...pgSettings, peralatan: val})}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-700 text-sm font-bold mb-2">Nama Pemilik Rekening</label>
+              <input
+                type="text"
+                value={pgSettings.rekening_name}
+                onChange={(e) => setPgSettings({...pgSettings, rekening_name: e.target.value})}
                 className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
