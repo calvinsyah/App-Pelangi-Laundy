@@ -395,27 +395,27 @@ export default function AbsensiGaji() {
                     <td className="py-3 text-gray-800">{fmtRp(h.lembur)}</td>
                     <td className="py-3 text-red-600">{fmtRp(h.potongan)}</td>
                     <td className="py-3 font-bold text-gray-900">{fmtRp(h.totalDiterima)}</td>
-                    <td className="py-3 text-right space-x-1">
+                    <td className="py-3 text-right flex justify-end gap-1.5 items-center">
                       <button
                         onClick={() => handleCetakSlip(h)}
-                        className="text-emerald-600 hover:text-emerald-800 p-1.5 rounded hover:bg-emerald-50 transition-colors"
+                        className="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition-colors"
                         title="Cetak Slip HTML"
                       >
-                        <Printer size={16} />
+                        <Printer size={16} /> Cetak
                       </button>
                       <button
                         onClick={() => handleDownloadSlip(h)}
-                        className="text-indigo-600 hover:text-indigo-800 p-1.5 rounded hover:bg-indigo-50 transition-colors"
+                        className="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md transition-colors"
                         title="Download Slip HTML"
                       >
-                        <Download size={16} />
+                        <Download size={16} /> Unduh
                       </button>
                       <button
                         onClick={() => handleEditGaji(h)}
-                        className="text-blue-600 hover:text-blue-800 p-1.5 rounded hover:bg-blue-50 transition-colors"
+                        className="flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                         title="Edit Komponen Gaji"
                       >
-                        <Edit size={16} />
+                        <Edit size={16} /> Edit
                       </button>
                     </td>
                   </tr>

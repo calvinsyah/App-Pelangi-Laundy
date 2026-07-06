@@ -189,7 +189,7 @@ export default function MasterJenisNota() {
                     <td className="p-4 text-gray-800">{j.multiplier}x</td>
                     <td className="p-4 text-gray-800">{j.berlaku_reguler ? 'Ya' : 'Tidak'}</td>
                     <td className="p-4 text-gray-800">{j.berlaku_flat ? 'Ya' : 'Tidak'}</td>
-                    <td className="p-4 text-right space-x-2">
+                    <td className="p-4 text-right flex justify-end gap-2 items-center">
                       <button
                         onClick={() => {
                           setEditId(j.id);
@@ -201,21 +201,21 @@ export default function MasterJenisNota() {
                           });
                           setIsModalOpen(true);
                         }}
-                        className="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                         title="Edit Jenis Nota"
                       >
-                        <Edit2 size={18} />
+                        <Edit2 size={16} /> Edit
                       </button>
                       <button
                         onClick={() => handleDelete(j.id)}
-                        className="text-red-600 hover:text-red-800 p-2 rounded-md hover:bg-red-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
                         title="Hapus Jenis Nota"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} /> Hapus
                       </button>
                       <button
                         onClick={() => openLinenConfig(j)}
-                        className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 hover:text-emerald-800 px-3 py-1.5 rounded-md font-medium transition-colors text-sm ml-2"
+                        className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 hover:text-emerald-800 px-3 py-1.5 rounded-md font-medium transition-colors text-sm"
                         title="Atur Linen yang Berlaku"
                       >
                         Atur Linen

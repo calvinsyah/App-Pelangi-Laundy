@@ -174,33 +174,29 @@ export default function RiwayatNota() {
                       <td className="p-4 text-gray-800">
                           <button 
                             onClick={() => setDetailNota(n)}
-                            className="text-blue-600 hover:underline flex items-center gap-1 text-sm font-medium"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
                           >
-                            <Eye size={14} /> Lihat Item
+                            <Eye size={16} /> Lihat
                           </button>
                       </td>
                       <td className="p-4 font-semibold text-gray-800">
                         {n.pelanggan?.tipe_billing?.toUpperCase() === 'FLAT' && (n.jenis?.toUpperCase().includes('FLAT') || n.jenis_nota?.nama?.toUpperCase().includes('FLAT')) ? '-' : fmtRp(totalTagihan)}
                       </td>
-                      <td className="p-4 text-right space-x-2">
-                        {isAdmin && (
-                          <>
-                            <button 
-                              onClick={() => setEditModalId(n.id)}
-                              className="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-50 transition-colors"
-                              title="Edit Nota"
-                            >
-                              <Edit2 size={18} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(n.id)}
-                              className="text-red-600 hover:text-red-800 p-2 rounded-md hover:bg-red-50 transition-colors"
-                              title="Hapus Nota"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </>
-                        )}
+                      <td className="p-4 text-right flex justify-end gap-2">
+                        <button 
+                          onClick={() => setEditModalId(n.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
+                          title="Edit Nota"
+                        >
+                          <Edit2 size={16} /> Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(n.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
+                          title="Hapus Nota"
+                        >
+                          <Trash2 size={16} /> Hapus
+                        </button>
                       </td>
                     </tr>
                   );

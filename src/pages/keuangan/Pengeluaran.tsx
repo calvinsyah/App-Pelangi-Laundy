@@ -226,14 +226,14 @@ export default function Pengeluaran() {
                         {b.lunas ? 'Lunas' : 'Belum Lunas'}
                       </span>
                     </td>
-                    <td className="p-4 text-right space-x-2">
+                    <td className="p-4 text-right flex justify-end gap-2 items-center">
                       {!b.lunas && (
                         <button
                           onClick={() => handleTandaiLunas(b.id)}
-                          className="text-green-600 hover:text-green-800 p-2 rounded-md hover:bg-green-50 transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 rounded-md transition-colors"
                           title="Tandai Lunas"
                         >
-                          <CheckCircle size={18} />
+                          <CheckCircle size={16} /> Lunas
                         </button>
                       )}
                       <button
@@ -248,15 +248,15 @@ export default function Pengeluaran() {
                           });
                           setIsModalOpen(true);
                         }}
-                        className="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                       >
-                        <Edit2 size={18} />
+                        <Edit2 size={16} /> Edit
                       </button>
                       <button
                         onClick={() => handleDelete(b.id)}
-                        className="text-red-600 hover:text-red-800 p-2 rounded-md hover:bg-red-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} /> Hapus
                       </button>
                     </td>
                   </tr>

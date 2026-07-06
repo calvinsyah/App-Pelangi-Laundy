@@ -152,22 +152,22 @@ export default function MasterKaryawan() {
                         {k.tipe_gaji || 'Borongan'}
                       </span>
                     </td>
-                    <td className="p-4 text-right space-x-2">
+                    <td className="p-4 text-right flex justify-end gap-2">
                       <button
                         onClick={() => {
                           setEditId(k.id);
                           setFormData({ nama: k.nama, bagian: k.bagian, tipe_gaji: k.tipe_gaji || 'Borongan', gaji_pokok: k.gaji_pokok || 0 });
                           setIsModalOpen(true);
                         }}
-                        className="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                       >
-                        <Edit2 size={18} />
+                        <Edit2 size={16} /> Edit
                       </button>
                       <button
                         onClick={() => handleDelete(k.id)}
-                        className="text-red-600 hover:text-red-800 p-2 rounded-md hover:bg-red-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} /> Hapus
                       </button>
                     </td>
                   </tr>

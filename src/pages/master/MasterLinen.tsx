@@ -130,22 +130,22 @@ export default function MasterLinen() {
                 filteredLinens.map((linen) => (
                   <tr key={linen.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="p-4 text-gray-800">{linen.nama}</td>
-                    <td className="p-4 text-right space-x-2">
+                    <td className="p-4 text-right flex justify-end gap-2">
                       <button
                         onClick={() => {
                           setEditId(linen.id);
                           setNama(linen.nama);
                           setIsModalOpen(true);
                         }}
-                        className="text-blue-600 hover:text-blue-800 p-2 rounded-md hover:bg-blue-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                       >
-                        <Edit2 size={18} />
+                        <Edit2 size={16} /> Edit
                       </button>
                       <button
                         onClick={() => handleDelete(linen.id)}
-                        className="text-red-600 hover:text-red-800 p-2 rounded-md hover:bg-red-50 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-md transition-colors"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} /> Hapus
                       </button>
                     </td>
                   </tr>
