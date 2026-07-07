@@ -38,6 +38,7 @@ export default function Tagihan() {
   
   const [invoiceData, setInvoiceData] = useState<any[]>([]);
   const [isLocked, setIsLocked] = useState(false);
+  const [snapshotData, setSnapshotData] = useState<any>(null);
   const [isPaid, setIsPaid] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   
@@ -118,13 +119,15 @@ export default function Tagihan() {
       // 1. Get status lock & bayar
       const lockKey = `${selectedPelanggan}_${selectedBulan}`;
       const [lockRes, payRes] = await Promise.all([
-        supabase.from('locks').select('is_locked').eq('key', lockKey).maybeSingle(),
+        supabase.from('locks').select('is_locked, snapshot_data').eq('key', lockKey).maybeSingle(),
         supabase.from('payment_status').select('is_paid').eq('key', lockKey).maybeSingle()
       ]);
 
       const locked = lockRes.data?.is_locked || false;
+      const snap = lockRes.data?.snapshot_data || null;
       const paid = payRes.data?.is_paid || false;
       setIsLocked(locked);
+      setSnapshotData(snap);
       setIsPaid(paid);
 
       // 2. Fetch all nota in that month
@@ -160,11 +163,31 @@ export default function Tagihan() {
   }, [selectedPelanggan, selectedBulan, pelangganList]);
 
   const handleToggleLock = async () => {
+    const rawPel = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!rawPel) return;
+
     const lockKey = `${selectedPelanggan}_${selectedBulan}`;
     const newLock = !isLocked;
-    const { error } = await supabase.from('locks').upsert({ key: lockKey, is_locked: newLock });
+    
+    let newSnapshot = snapshotData;
+    if (newLock && !snapshotData) {
+      // Create snapshot when locking if it doesn't exist
+      newSnapshot = {
+        tarif_rs: rawPel.tarif_rs,
+        tarif_flat: rawPel.tarif_flat,
+        tipe_billing: rawPel.tipe_billing,
+        tipe: rawPel.tipe
+      };
+    }
+
+    const { error } = await supabase.from('locks').upsert({ 
+      key: lockKey, 
+      is_locked: newLock,
+      snapshot_data: newSnapshot 
+    });
     if (!error) {
       setIsLocked(newLock);
+      setSnapshotData(newSnapshot);
     }
   };
 
@@ -178,8 +201,9 @@ export default function Tagihan() {
   };
 
   const handleDownloadExcel = async () => {
-    const pelData = pelangganList.find(p => p.nama === selectedPelanggan);
-    if (!pelData || invoiceData.length === 0) return;
+    const rawPelData = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!rawPelData || invoiceData.length === 0) return;
+    const pelData = { ...rawPelData, ...(snapshotData || {}) };
     
     setLoading(true);
     const { data: kopData } = await supabase.from('kop').select('*').single();
@@ -214,8 +238,9 @@ export default function Tagihan() {
   };
 
   const handleCetakLinenRoom = async () => {
-    const pelData = pelangganList.find(p => p.nama === selectedPelanggan);
-    if (!pelData || invoiceData.length === 0) return;
+    const rawPelData = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!rawPelData || invoiceData.length === 0) return;
+    const pelData = { ...rawPelData, ...(snapshotData || {}) };
     setLoading(true);
     const { data: kopData } = await supabase.from('kop').select('*').single();
     const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
@@ -225,8 +250,9 @@ export default function Tagihan() {
   };
 
   const handleCetakInvoice = async () => {
-    const pelData = pelangganList.find(p => p.nama === selectedPelanggan);
-    if (!pelData || invoiceData.length === 0) return;
+    const rawPelData = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!rawPelData || invoiceData.length === 0) return;
+    const pelData = { ...rawPelData, ...(snapshotData || {}) };
     setLoading(true);
     const { data: kopData } = await supabase.from('kop').select('*').single();
     const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
@@ -236,7 +262,8 @@ export default function Tagihan() {
   };
 
 
-  const pel = pelangganList.find(p => p.nama === selectedPelanggan);
+  const rawPel = pelangganList.find(p => p.nama === selectedPelanggan);
+  const pel = rawPel ? { ...rawPel, ...(snapshotData || {}) } : undefined;
   const isFlatCustomer = pel?.tipe_billing?.toUpperCase() === 'FLAT';
   const flatRate = isFlatCustomer ? pel?.tarif_flat || 0 : 0;
   
