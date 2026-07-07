@@ -8,9 +8,8 @@ test.describe('Modul Tagihan (Invoice & Kuitansi) - E2E', () => {
     // Tunggu render
     await page.waitForTimeout(1000);
     
-    // Login
-    await page.locator('label:has-text("Email")').locator('..').locator('input').fill('admin@email.com');
-    await page.locator('label:has-text("Password")').locator('..').locator('input').fill('admin');
+    await page.locator('label:has-text("Email")').locator('..').locator('input').fill(process.env.TEST_EMAIL!);
+    await page.locator('label:has-text("Password")').locator('..').locator('input').fill(process.env.TEST_PASSWORD!);
     await page.getByRole('button', { name: 'Sign In' }).click();
     
     // Pastikan dashboard termuat (cek tulisan Dashboard)

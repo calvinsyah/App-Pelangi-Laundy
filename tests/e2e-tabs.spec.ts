@@ -27,8 +27,8 @@ test.describe('E2E Tabs Testing', () => {
     console.log('Logging in...');
     await page.waitForURL('**/login');
     
-    await page.fill('input[type="email"]', 'admin@email.com');
-    await page.fill('input[type="password"]', 'admin');
+    await page.fill('input[type="email"]', process.env.TEST_EMAIL!);
+    await page.fill('input[type="password"]', process.env.TEST_PASSWORD!);
     await page.click('button:has-text("Sign In"), button[type="submit"]');
     
     // Wait for successful login (wait until not on login page)
