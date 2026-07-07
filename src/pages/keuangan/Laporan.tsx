@@ -60,20 +60,26 @@ export default function Laporan() {
         if (!notaByPelanggan[n.pelanggan_id]) notaByPelanggan[n.pelanggan_id] = [];
         notaByPelanggan[n.pelanggan_id].push(n);
       });
+      const { data: jnData } = await supabase.from('jenis_nota').select('*');
+      const jenisNotaList = jnData || [];
+
+      const checkIsNotaFlat = (nota: any) => {
+        return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+      };
 
       Object.keys(notaByPelanggan).forEach(pidStr => {
         const pid = parseInt(pidStr, 10);
         const p = pelangganMap[pid];
         if (!p) return;
         
-        const isFlat = p.tipe?.toUpperCase() === "HOTEL" && p.tipe_billing?.toUpperCase() === "FLAT";
+        const isFlat = p.tipe_billing?.toUpperCase() === "FLAT";
         let customerTotal = 0;
         const arrNota = notaByPelanggan[pid];
         let hasTransaction = false;
         
         arrNota.forEach(n => {
           hasTransaction = true;
-          if (isFlat && (n.jenis === "FLAT" || n.jenis === "FLAT ASLI")) return;
+          if (isFlat && checkIsNotaFlat(n)) return;
           customerTotal += n.total || 0;
         });
         

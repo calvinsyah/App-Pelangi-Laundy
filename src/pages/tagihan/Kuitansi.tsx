@@ -71,25 +71,32 @@ export default function Kuitansi() {
     const [
       { data: dbNota },
       { data: kopData },
-      { data: pengData }
+      { data: pengData },
+      { data: jnData }
     ] = await Promise.all([
       supabase.from('nota').select('*').eq('pelanggan_id', pData.id).gte('tanggal', startDate).lte('tanggal', endDate).order('tanggal'),
       supabase.from('kop').select('*').limit(1),
-      supabase.from('pengaturan').select('*').limit(1)
+      supabase.from('pengaturan').select('*').limit(1),
+      supabase.from('jenis_nota').select('*')
     ]);
 
     const notas = dbNota || [];
     const kop = kopData?.[0] || {};
     const pengaturan = pengData?.[0] || {};
+    const jenisNotaList = jnData || [];
 
-    const isFlatCustomer = pData.tipe?.toUpperCase() === "HOTEL" && pData.tipe_billing?.toUpperCase() === "FLAT";
+    const isFlatCustomer = pData.tipe_billing?.toUpperCase() === "FLAT";
     const flatRate = isFlatCustomer ? pData.tarif_flat : 0;
+
+    const checkIsNotaFlat = (nota: any) => {
+      return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+    };
     
     const totalsPerJenis: Record<string, number> = {};
     notas.forEach((nota) => {
       const j = nota.jenis || 'REGULER';
       if (!totalsPerJenis[j]) totalsPerJenis[j] = 0;
-      if (isFlatCustomer && (j === "FLAT" || j === "FLAT ASLI")) {
+      if (isFlatCustomer && checkIsNotaFlat(nota)) {
         // Skip
       } else {
         let t = 0;
@@ -110,7 +117,7 @@ export default function Kuitansi() {
     if (isFlatCustomer) {
       totalTagihan = flatRate;
       for (const [j, v] of Object.entries(totalsPerJenis)) {
-        if (j !== "FLAT" && j !== "FLAT ASLI") totalTagihan += v;
+        totalTagihan += v; // totalsPerJenis already excluded flat bills above
       }
     } else {
       totalTagihan = Object.values(totalsPerJenis).reduce((a, b) => a + b, 0);

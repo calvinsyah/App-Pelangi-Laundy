@@ -41,8 +41,10 @@ export default function Tagihan() {
   const [isPaid, setIsPaid] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   
+  const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
+
   useEffect(() => {
-    async function fetchPelanggan() {
+    async function fetchData() {
       const { data } = await supabase.from('pelanggan').select('*').order('nama');
       // Map to correct properties
       setPelangganList(data?.map(p => ({
@@ -56,9 +58,16 @@ export default function Tagihan() {
         alamat: p.alamat || '',
         kota: p.kota || ''
       })) || []);
+
+      const { data: jnData } = await supabase.from('jenis_nota').select('*');
+      setJenisNotaList(jnData || []);
     }
-    fetchPelanggan();
+    fetchData();
   }, []);
+
+  const checkIsNotaFlat = (nota: any) => {
+    return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+  };
 
   const toRoman = (num: number): string => {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
@@ -233,7 +242,7 @@ export default function Tagihan() {
   
   let totalNonFlat = 0;
   invoiceData.forEach(nota => {
-    const isNotaFlat = nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+    const isNotaFlat = checkIsNotaFlat(nota);
     const itemTotal = calculateTotal(nota, pel);
     if (!(isFlatCustomer && isNotaFlat)) {
       totalNonFlat += itemTotal;
@@ -303,7 +312,7 @@ export default function Tagihan() {
                       </tr>
                     )}
                     {invoiceData.map((nota, idx) => {
-                      const isNotaFlat = nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+                      const isNotaFlat = checkIsNotaFlat(nota);
                       const itemTotal = calculateTotal(nota, pel);
                       const displayTotal = isFlatCustomer && isNotaFlat ? 0 : itemTotal;
                       

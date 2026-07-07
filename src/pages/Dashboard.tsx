@@ -47,7 +47,8 @@ export default function Dashboard() {
           { data: utangs },
           { data: pengaturan },
           { data: pelangganData },
-          { data: hargaPelanggan }
+          { data: hargaPelanggan },
+          { data: jenisNotaData }
         ] = await Promise.all([
           fetchAll('nota', 'tanggal'),
           fetchAll('biaya', 'tanggal'),
@@ -55,8 +56,14 @@ export default function Dashboard() {
           supabase.from('utang').select('*').lte('inserted_at', endDate + 'T23:59:59').limit(10000),
           supabase.from('pengaturan').select('*').limit(1),
           supabase.from('pelanggan').select('*').limit(10000),
-          supabase.from('harga_pelanggan').select('*').limit(10000)
+          supabase.from('harga_pelanggan').select('*').limit(10000),
+          supabase.from('jenis_nota').select('*')
         ]);
+
+        const jenisNotaList = jenisNotaData || [];
+        const checkIsNotaFlat = (nota: any) => {
+          return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+        };
 
         const pg = pengaturan?.[0] || {};
         const peralatan = pg.peralatan || 0;
@@ -73,9 +80,8 @@ export default function Dashboard() {
         // Helper to calculate Tagihan for a specific customer in a specific month
         const hitungTagihan = (pData: any, arrNota: any[], prefixBln: string) => {
           if (!pData) return 0;
-          const isFlat = pData.tipe?.toUpperCase() === "HOTEL" && pData.tipe_billing?.toUpperCase() === "FLAT";
-          const isRS = pData.tipe?.toUpperCase() === "RS";
-          
+          const isRS = pData.tipe?.toUpperCase() === 'RS';
+          const isFlat = pData.tipe_billing?.toUpperCase() === 'FLAT';
           const notasCust = arrNota.filter((n) => n.pelanggan_id === pData.id && n.tanggal && n.tanggal.startsWith(prefixBln));
           if (notasCust.length === 0 && !isFlat) return 0;
           
@@ -96,8 +102,7 @@ export default function Dashboard() {
               total += pData.tarif_flat || 0;
             }
             notasCust.forEach((nota) => {
-              const jenis = nota.jenis?.toUpperCase();
-              if (jenis !== "FLAT" && jenis !== "FLAT ASLI") {
+              if (!checkIsNotaFlat(nota)) {
                 total += nota.total || 0;
               }
             });

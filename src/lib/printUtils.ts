@@ -8,8 +8,8 @@ import { fmtRp, terbilang } from './utils';
  */
 export const generateKopHTML = (kop: any, logoUrl?: string | null): string => {
   if (!kop || !kop.nama) return "";
-  
-  const logoHtml = logoUrl 
+
+  const logoHtml = logoUrl
     ? `<div style="padding-right: 20px; border-right: 1px solid #ccc; margin-right: 20px; display: flex; align-items: center; justify-content: center;">
          <img src="${logoUrl}" alt="Logo" style="max-height: 70px;">
        </div>`
@@ -45,7 +45,7 @@ export const openPrintWindow = (html: string, title: string = "Print") => {
     alert("Popup diblokir! Tolong izinkan pop-up untuk situs ini.");
     return;
   }
-  
+
   // Wrap in basic HTML structure if not already a full document
   const fullHtml = html.includes("<html") ? html : `
     <!DOCTYPE html>
@@ -64,7 +64,7 @@ export const openPrintWindow = (html: string, title: string = "Print") => {
 
   printWindow.document.write(fullHtml);
   printWindow.document.close();
-  
+
   printWindow.onload = function () {
     printWindow.print();
     setTimeout(function () {
@@ -90,7 +90,7 @@ export const downloadHTML = (html: string, filename: string) => {
     <body>${html}</body>
     </html>
   `;
-  
+
   const blob = new Blob([fullHtml], { type: "text/html" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -121,7 +121,7 @@ export const downloadExcel = (htmlTable: string, filename: string) => {
     </body>
     </html>
   `;
-  
+
   const blob = new Blob([excelHTML], { type: "application/vnd.ms-excel" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -140,7 +140,7 @@ export const buildLinenRoomHTML = async (
   kopHTML: string
 ): Promise<string> => {
   const isFlatCustomer = pel.tipe === "Hotel" && pel.tipe_billing === "Flat";
-  
+
   // Ambil master linen dan konfigurasi pelanggan
   const [mlRes, lpRes, hpRes] = await Promise.all([
     supabase.from('master_linen').select('*').order('id'),
@@ -178,14 +178,14 @@ export const buildLinenRoomHTML = async (
   notas.forEach(nota => {
     const dateObj = new Date(nota.tanggal);
     const day = dateObj.getDate();
-    
+
     // Jika pelanggan flat ambil nota flat, jika pelanggan reguler ambil nota reguler
     if (isFlatCustomer) {
       if (nota.jenis !== "FLAT") return;
     } else {
       if (nota.jenis !== "REGULER") return;
     }
-    
+
     if (nota.items && Array.isArray(nota.items)) {
       nota.items.forEach((it: any) => {
         if (it.linen_id && grid[it.linen_id] && day >= 1 && day <= 31) {
@@ -196,7 +196,7 @@ export const buildLinenRoomHTML = async (
   });
 
   const namaBulan = new Date(bln + "-02").toLocaleDateString("id-ID", { month: "long", year: "numeric" }).toUpperCase();
-  
+
   let html = `<div style="font-family:'Segoe UI',Arial,sans-serif;font-size:13px;margin:0 auto;max-width:100%;">
     ${kopHTML}
     <h2 style="text-align:center;margin:0 0 4px 0;">LINEN ROOM</h2>
@@ -207,7 +207,7 @@ export const buildLinenRoomHTML = async (
           <th style="padding:5px 4px;text-align:center;width:30px;border:1px solid #999;">No</th>
           <th style="padding:5px 4px;text-align:left;min-width:120px;border:1px solid #999;">ITEMS</th>
           <th style="padding:5px 4px;text-align:right;width:60px;border:1px solid #999;">Price</th>`;
-  
+
   for (let d = 1; d <= 31; d++) html += `<th style="padding:5px 2px;text-align:center;width:22px;border:1px solid #999;">${d}</th>`;
   html += `<th style="padding:5px 4px;text-align:right;width:50px;border:1px solid #999;">Total</th>
            <th style="padding:5px 4px;text-align:right;width:80px;border:1px solid #999;">Amount</th>
@@ -216,25 +216,25 @@ export const buildLinenRoomHTML = async (
       <tbody>`;
 
   let grandTotalQty = 0, grandTotalAmount = 0, rowNum = 0;
-  
+
   config.forEach(item => {
-    const data = grid[item.id]; 
+    const data = grid[item.id];
     if (!data) return;
-    
+
     let totalQty = 0, rowHtml = "";
-    for (let d = 1; d <= 31; d++) { 
-      const q = data.qty[d]; 
-      rowHtml += `<td style="padding:3px 2px;text-align:center;border:1px solid #ccc;">${q > 0 ? q : ""}</td>`; 
-      totalQty += q; 
+    for (let d = 1; d <= 31; d++) {
+      const q = data.qty[d];
+      rowHtml += `<td style="padding:3px 2px;text-align:center;border:1px solid #ccc;">${q > 0 ? q : ""}</td>`;
+      totalQty += q;
     }
-    
+
     if (totalQty === 0 && !isFlatCustomer) return;
-    
-    rowNum++; 
-    const amount = totalQty * data.price; 
-    grandTotalQty += totalQty; 
+
+    rowNum++;
+    const amount = totalQty * data.price;
+    grandTotalQty += totalQty;
     grandTotalAmount += amount;
-    
+
     html += `<tr>
       <td style="padding:5px 4px;text-align:center;border:1px solid #ccc;">${rowNum}</td>
       <td style="padding:5px 4px;border:1px solid #ccc;">${data.name}</td>
@@ -247,19 +247,19 @@ export const buildLinenRoomHTML = async (
 
   html += `<tr style="background:#1e3a5f;color:white;font-weight:700;">
     <td colspan="3" style="padding:6px 4px;text-align:right;border:1px solid #999;">TOTAL KESELURUHAN</td>`;
-  
-  for (let d = 1; d <= 31; d++) { 
-    let dayTotal = 0; 
-    config.forEach(item => { 
-      if (grid[item.id]) dayTotal += grid[item.id].qty[d] || 0; 
-    }); 
-    html += `<td style="padding:6px 2px;text-align:center;border:1px solid #999;">${dayTotal > 0 ? dayTotal : ""}</td>`; 
+
+  for (let d = 1; d <= 31; d++) {
+    let dayTotal = 0;
+    config.forEach(item => {
+      if (grid[item.id]) dayTotal += grid[item.id].qty[d] || 0;
+    });
+    html += `<td style="padding:6px 2px;text-align:center;border:1px solid #999;">${dayTotal > 0 ? dayTotal : ""}</td>`;
   }
-  
+
   html += `<td style="padding:6px 4px;text-align:right;border:1px solid #999;">${grandTotalQty}</td>
     <td style="padding:6px 4px;text-align:right;border:1px solid #999;">${fmtRp(grandTotalAmount).replace('Rp ', '')}</td>
     </tr></tbody></table></div>`;
-    
+
   return html;
 };
 
@@ -276,59 +276,53 @@ export const buildInvoicePelangganHTML = async (
   const bankAccNo = pg?.rekening_no || "";
   const direktur = pg?.direktur || "Bagus Riadi Kurniawan";
 
-  const isFlatCustomer = pel.tipe === "Hotel" && pel.tipe_billing === "Flat";
+  const isFlatCustomer = pel.tipe_billing?.toUpperCase() === 'FLAT';
   const flatRate = isFlatCustomer ? pel.tarif_flat || 0 : 0;
+
+  const { data: jnData } = await supabase.from('jenis_nota').select('*');
+  const jenisNotaList = jnData || [];
+
+  const checkIsNotaFlat = (nota: any) => {
+    return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+  };
 
   const totalsPerJenis: Record<string, number> = {};
   notas.forEach((nota) => {
     const j = nota.jenis || 'KILOAN';
     if (!totalsPerJenis[j]) totalsPerJenis[j] = 0;
-    if (isFlatCustomer && (j === "FLAT" || j === "FLAT ASLI")) {
+    if (isFlatCustomer && checkIsNotaFlat(nota)) {
       // dihandle terpisah via flatRate
     } else {
       totalsPerJenis[j] += nota.total || 0; // Pastikan nota.total sudah dihitung sebelum dilempar ke sini
     }
   });
 
-  const labelMap: Record<string, string> = {
-    "FLAT": "Biaya Langganan Flat Bulanan",
-    "NON FLAT": "Cucian Non Flat (Perincian Terlampir)",
-    "FNB": "Cucian F & B (Perincian Terlampir)",
-    "SPOTING": "Spotting / Treatment (Perincian Terlampir)",
-  };
-  const orderJenis = ["FLAT", "NON FLAT", "FNB", "SPOTING"];
-
   let grandTotal = 0;
   let detailRows = "";
   let counter = 1;
 
-  orderJenis.forEach((j) => {
-    let amount = 0;
-    if (j === "FLAT" && isFlatCustomer) {
-      amount = flatRate;
-    } else {
-      amount = totalsPerJenis[j] || 0;
-    }
-    if (j === "FLAT" && !isFlatCustomer && amount === 0) return;
-    if (j !== "FLAT" && amount === 0) return;
-    
-    grandTotal += amount;
+  if (isFlatCustomer && flatRate > 0) {
+    grandTotal += flatRate;
     detailRows += `
         <tr>
             <td style="text-align:center; padding: 8px 10px;">${counter}</td>
-            <td style="padding: 8px 10px;">${labelMap[j] || j}</td>
-            <td style="text-align:right; padding: 8px 10px; font-weight: 600;">${fmtRp(amount)}</td>
+            <td style="padding: 8px 10px;">FLAT </td>
+            <td style="text-align:right; padding: 8px 10px; font-weight: 600;">${fmtRp(flatRate)}</td>
         </tr>`;
     counter++;
-  });
+  }
 
   for (const [jenis, amount] of Object.entries(totalsPerJenis)) {
-    if (!orderJenis.includes(jenis) && amount > 0) {
+    if (amount > 0) {
       grandTotal += amount;
+      // Jika label aslinya KILOAN, kita bisa tampilkan Kiloan, atau gunakan langsung
+      const isRsKiloan = pel.tipe?.toUpperCase() === 'RS' && jenis === 'KILOAN';
+      const labelDesc = isRsKiloan ? `Biaya Cuci Linen Kiloan RS` : `${jenis} (Perincian Terlampir)`;
+
       detailRows += `
             <tr>
                 <td style="text-align:center; padding: 8px 10px;">${counter}</td>
-                <td style="padding: 8px 10px;">${jenis} (Perincian Terlampir)</td>
+                <td style="padding: 8px 10px;">${labelDesc}</td>
                 <td style="text-align:right; padding: 8px 10px; font-weight: 600;">${fmtRp(amount)}</td>
             </tr>`;
       counter++;
@@ -417,7 +411,7 @@ export const buildInvoicePelangganHTML = async (
 export const buildSlipGajiHTML = (h: any, kopHTML: string): string => {
   if (!h) return '';
   const k = h.karyawan;
-  
+
   let slipHTML = `<!DOCTYPE html>
 <html>
 <head>
@@ -473,7 +467,7 @@ export const buildSlipGajiHTML = (h: any, kopHTML: string): string => {
 export const buildSlipGajiTetapHTML = (h: any, kopHTML: string): string => {
   if (!h) return '';
   const k = h.karyawan;
-  
+
   let slipHTML = `<!DOCTYPE html>
 <html>
 <head>

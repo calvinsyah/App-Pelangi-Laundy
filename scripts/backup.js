@@ -14,8 +14,8 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 const tables = [
   "pelanggan", "jenis_nota", "master_linen", "karyawan", "absensi", 
-  "pengaturan", "kop", "harga_pelanggan", "nota", "biaya", 
-  "payment_status", "locks", "utang", "gaji", "backup_history"
+  "pengaturan", "kop", "harga_pelanggan", "linen_pelanggan", "pelanggan_nota_linen", "nota", "biaya", 
+  "payment_status", "locks", "utang", "gaji", "invoice_numbers", "invoice_counter", "backup_history"
 ];
 
 async function runBackup() {

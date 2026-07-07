@@ -59,18 +59,52 @@ const SortableLinenItem: React.FC<{ item: LinenConfigItem, index: number, update
   );
 }
 
+const SortableNotaLinenItem: React.FC<{ id: string, nama: string, isSelected: boolean, toggle: () => void, orderIdx: number }> = ({ id, nama, isSelected, toggle, orderIdx }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-4 p-3 bg-white border rounded-lg ${isDragging ? 'shadow-lg border-emerald-500 ring-1 ring-emerald-500 relative' : isSelected ? 'border-emerald-200 bg-emerald-50' : 'border-gray-200'}`}
+    >
+      <div {...attributes} {...listeners} className="cursor-grab hover:text-emerald-500 text-gray-400 touch-none">
+        <GripVertical size={20} />
+      </div>
+      <label className="flex-1 flex items-center gap-3 cursor-pointer">
+        <input
+          type="checkbox"
+          className="w-5 h-5 text-emerald-600 rounded cursor-pointer"
+          checked={isSelected}
+          onChange={toggle}
+        />
+        <span className="flex-1 font-medium text-gray-700">{nama}</span>
+      </label>
+      {isSelected && (
+        <span className="bg-emerald-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center">
+          {orderIdx + 1}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function MasterPelanggan() {
   const [pelanggan, setPelanggan] = useState<Pelanggan[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  
+
   const { confirm } = useConfirm();
   const { toast } = useToast();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
-  const [formData, setFormData] = useState({ 
-    nama: '', kode_invoice: '', tipe: 'HOTEL', tipe_billing: 'REGULER', tarif_flat: 0, tarif_rs: 0, alamat: '', kota: '' 
+  const [formData, setFormData] = useState({
+    nama: '', kode_invoice: '', tipe: 'HOTEL', tipe_billing: 'REGULER', tarif_flat: 0, tarif_rs: 0, alamat: '', kota: ''
   });
 
   // Linen Config Modal State
@@ -78,6 +112,10 @@ export default function MasterPelanggan() {
   const [activePelanggan, setActivePelanggan] = useState<Pelanggan | null>(null);
   const [linenConfig, setLinenConfig] = useState<LinenConfigItem[]>([]);
   const [savingLinen, setSavingLinen] = useState(false);
+  const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<string>('harga_urutan'); // 'harga_urutan' or jenis_nota_id
+  const [notaLinenConfig, setNotaLinenConfig] = useState<Record<number, number[]>>({}); // jenis_nota_id -> array of linen_ids
+
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -88,15 +126,19 @@ export default function MasterPelanggan() {
 
   const fetchPelanggan = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('pelanggan')
-      .select('*')
-      .order('nama', { ascending: true });
-    
-    if (error) {
+    const [pelangganRes, jenisNotaRes] = await Promise.all([
+      supabase.from('pelanggan').select('*').order('nama', { ascending: true }),
+      supabase.from('jenis_nota').select('*').order('nama', { ascending: true })
+    ]);
+
+    if (pelangganRes.error) {
       toast('Gagal mengambil data pelanggan', 'error');
     } else {
-      setPelanggan(data || []);
+      setPelanggan(pelangganRes.data || []);
+    }
+
+    if (jenisNotaRes.data) {
+      setJenisNotaList(jenisNotaRes.data);
     }
     setLoading(false);
   };
@@ -143,8 +185,10 @@ export default function MasterPelanggan() {
 
   const openLinenConfig = async (p: Pelanggan) => {
     setActivePelanggan(p);
+    setActiveTab('harga_urutan');
     setIsLinenModalOpen(true);
     setLinenConfig([]);
+    setNotaLinenConfig({});
 
     // Fetch master linen
     const { data: masterLinen, error: err1 } = await supabase.from('master_linen').select('*').order('id');
@@ -152,8 +196,11 @@ export default function MasterPelanggan() {
     const { data: linenP, error: err2 } = await supabase.from('linen_pelanggan').select('*').eq('pelanggan_id', p.id);
     // Fetch harga_pelanggan
     const { data: hargaP, error: err3 } = await supabase.from('harga_pelanggan').select('*').eq('pelanggan_id', p.id);
+    // Fetch pelanggan_nota_linen
+    const { data: notaLinenP, error: err4 } = await supabase.from('pelanggan_nota_linen').select('*').eq('pelanggan_id', p.id);
 
-    if (err1 || err2 || err3) {
+    if (err1 || err2 || err3 || err4) {
+      console.error('Error fetching linen config:', { err1, err2, err3, err4 });
       toast('Gagal mengambil konfigurasi linen', 'error');
       return;
     }
@@ -170,7 +217,7 @@ export default function MasterPelanggan() {
           harga: hp ? hp.harga : 0
         };
       });
-      
+
       // Sort by urutan then by id
       config.sort((a, b) => {
         if (a.urutan === b.urutan) return a.linen_id - b.linen_id;
@@ -181,19 +228,36 @@ export default function MasterPelanggan() {
       config = config.map((c, i) => ({ ...c, urutan: i, id: c.linen_id.toString() }));
       setLinenConfig(config);
     }
+
+    if (notaLinenP) {
+      const notaConfig: Record<number, number[]> = {};
+
+      // Group by jenis_nota_id, and sort by urutan
+      const grouped = notaLinenP.reduce((acc: any, curr: any) => {
+        if (!acc[curr.jenis_nota_id]) acc[curr.jenis_nota_id] = [];
+        acc[curr.jenis_nota_id].push(curr);
+        return acc;
+      }, {});
+
+      for (const jnId in grouped) {
+        grouped[jnId].sort((a: any, b: any) => a.urutan - b.urutan);
+        notaConfig[Number(jnId)] = grouped[jnId].map((c: any) => c.linen_id);
+      }
+      setNotaLinenConfig(notaConfig);
+    }
   };
 
   const saveLinenConfig = async () => {
     if (!activePelanggan) return;
     setSavingLinen(true);
-    
+
     // Prepare data
     const lpData = linenConfig.map(c => ({
       pelanggan_id: activePelanggan.id,
       linen_id: c.linen_id,
       urutan: c.urutan
     }));
-    
+
     const hpData = linenConfig.map(c => ({
       pelanggan_id: activePelanggan.id,
       linen_id: c.linen_id,
@@ -205,9 +269,31 @@ export default function MasterPelanggan() {
       const { error: err1 } = await supabase.from('linen_pelanggan').upsert(lpData, { onConflict: 'pelanggan_id,linen_id' });
       // Upsert harga_pelanggan
       const { error: err2 } = await supabase.from('harga_pelanggan').upsert(hpData, { onConflict: 'pelanggan_id,linen_id' });
-      
+
+      // Save pelanggan_nota_linen
+      await supabase.from('pelanggan_nota_linen').delete().eq('pelanggan_id', activePelanggan.id);
+
+      const pnlData: any[] = [];
+      for (const jnIdStr in notaLinenConfig) {
+        const jnId = Number(jnIdStr);
+        const linenIds = notaLinenConfig[jnId];
+        linenIds.forEach((lId, index) => {
+          pnlData.push({
+            pelanggan_id: activePelanggan.id,
+            jenis_nota_id: jnId,
+            linen_id: lId,
+            urutan: index
+          });
+        });
+      }
+
+      if (pnlData.length > 0) {
+        const { error: err3 } = await supabase.from('pelanggan_nota_linen').insert(pnlData);
+        if (err3) throw new Error('Failed to insert pelanggan_nota_linen');
+      }
+
       if (err1 || err2) throw new Error('Failed to upsert');
-      
+
       toast('Konfigurasi linen berhasil disimpan', 'success');
       setIsLinenModalOpen(false);
     } catch (e) {
@@ -229,13 +315,37 @@ export default function MasterPelanggan() {
     }
   };
 
+  const toggleNotaLinen = (jnId: number, linenId: number) => {
+    setNotaLinenConfig(prev => {
+      const current = prev[jnId] || [];
+      if (current.includes(linenId)) {
+        return { ...prev, [jnId]: current.filter(id => id !== linenId) };
+      } else {
+        return { ...prev, [jnId]: [...current, linenId] };
+      }
+    });
+  };
+
+  const handleNotaDragEnd = (event: any, jnId: number) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setNotaLinenConfig(prev => {
+        const current = prev[jnId] || [];
+        const oldIndex = current.findIndex(id => id.toString() === active.id);
+        const newIndex = current.findIndex(id => id.toString() === over.id);
+        const newOrder = arrayMove(current, oldIndex, newIndex);
+        return { ...prev, [jnId]: newOrder };
+      });
+    }
+  };
+
   const updateHarga = (index: number, val: number) => {
     const newItems = [...linenConfig];
     newItems[index].harga = val || 0;
     setLinenConfig(newItems);
   };
 
-  const filteredPelanggan = pelanggan.filter(p => 
+  const filteredPelanggan = pelanggan.filter(p =>
     p.nama.toLowerCase().includes(search.toLowerCase()) ||
     p.kode_invoice.toLowerCase().includes(search.toLowerCase())
   );
@@ -299,7 +409,7 @@ export default function MasterPelanggan() {
                       ) : (
                         <>
                           {p.tipe_billing}
-                          {p.tipe_billing === 'FLAT' && <span className="text-sm text-gray-500 block">Rp {p.tarif_flat}/Kg</span>}
+                          {p.tipe_billing === 'FLAT' && <span className="text-sm text-gray-500 block">Rp {p.tarif_flat}</span>}
                         </>
                       )}
                     </td>
@@ -308,15 +418,15 @@ export default function MasterPelanggan() {
                       <button
                         onClick={() => {
                           setEditId(p.id);
-                          setFormData({ 
-                            nama: p.nama, 
-                            kode_invoice: p.kode_invoice, 
-                            tipe: p.tipe, 
-                            tipe_billing: p.tipe_billing || 'REGULER', 
-                            tarif_flat: p.tarif_flat || 0, 
+                          setFormData({
+                            nama: p.nama,
+                            kode_invoice: p.kode_invoice,
+                            tipe: p.tipe,
+                            tipe_billing: p.tipe_billing || 'REGULER',
+                            tarif_flat: p.tarif_flat || 0,
                             tarif_rs: p.tarif_rs || 0,
-                            alamat: p.alamat || '', 
-                            kota: p.kota || '' 
+                            alamat: p.alamat || '',
+                            kota: p.kota || ''
                           });
                           setIsModalOpen(true);
                         }}
@@ -357,20 +467,20 @@ export default function MasterPelanggan() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="mb-4">
                   <label className="block text-gray-700 text-sm font-bold mb-2">Nama Instansi</label>
-                  <input type="text" value={formData.nama} onChange={(e) => setFormData({...formData, nama: e.target.value})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" required />
+                  <input type="text" value={formData.nama} onChange={(e) => setFormData({ ...formData, nama: e.target.value })} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" required />
                 </div>
                 <div className="mb-4">
                   <label className="block text-gray-700 text-sm font-bold mb-2">Kode Invoice</label>
-                  <input type="text" value={formData.kode_invoice} onChange={(e) => setFormData({...formData, kode_invoice: e.target.value})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" required />
+                  <input type="text" value={formData.kode_invoice} onChange={(e) => setFormData({ ...formData, kode_invoice: e.target.value })} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" required />
                 </div>
                 <div className="mb-4">
                   <label className="block text-gray-700 text-sm font-bold mb-2">Tipe</label>
-                  <select 
-                    value={formData.tipe} 
+                  <select
+                    value={formData.tipe}
                     onChange={(e) => {
                       const tipe = e.target.value;
-                      setFormData({...formData, tipe, tipe_billing: tipe === 'RS' ? 'REGULER' : (formData.tipe_billing === '-' ? 'REGULER' : formData.tipe_billing)})
-                    }} 
+                      setFormData({ ...formData, tipe, tipe_billing: tipe === 'RS' ? 'REGULER' : (formData.tipe_billing === '-' ? 'REGULER' : formData.tipe_billing) })
+                    }}
                     className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="HOTEL">Hotel</option>
@@ -380,7 +490,7 @@ export default function MasterPelanggan() {
                 {formData.tipe === 'HOTEL' && (
                   <div className="mb-4">
                     <label className="block text-gray-700 text-sm font-bold mb-2">Tipe Billing</label>
-                    <select value={formData.tipe_billing} onChange={(e) => setFormData({...formData, tipe_billing: e.target.value})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500">
+                    <select value={formData.tipe_billing} onChange={(e) => setFormData({ ...formData, tipe_billing: e.target.value })} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500">
                       <option value="REGULER">Reguler</option>
                       <option value="FLAT">Flat</option>
                     </select>
@@ -389,30 +499,30 @@ export default function MasterPelanggan() {
                 {formData.tipe === 'RS' && (
                   <div className="mb-4 md:col-span-2">
                     <label className="block text-gray-700 text-sm font-bold mb-2">Tarif per Kg (Rp)</label>
-                    <CurrencyInput 
-                      value={formData.tarif_rs || 0} 
-                      onChange={(val) => setFormData({...formData, tarif_rs: val})} 
-                      className="shadow border rounded w-full py-2 pr-3 text-gray-700 focus:ring-2 focus:ring-blue-500" 
+                    <CurrencyInput
+                      value={formData.tarif_rs || 0}
+                      onChange={(val) => setFormData({ ...formData, tarif_rs: val })}
+                      className="shadow border rounded w-full py-2 pr-3 text-gray-700 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 )}
                 {formData.tipe === 'HOTEL' && formData.tipe_billing === 'FLAT' && (
                   <div className="mb-4 md:col-span-2">
-                    <label className="block text-gray-700 text-sm font-bold mb-2">Tarif Flat (/Kg)</label>
-                    <CurrencyInput 
-                      value={formData.tarif_flat || 0} 
-                      onChange={(val) => setFormData({...formData, tarif_flat: val})} 
-                      className="shadow border rounded w-full py-2 pr-3 text-gray-700 focus:ring-2 focus:ring-blue-500" 
+                    <label className="block text-gray-700 text-sm font-bold mb-2">Tarif Flat </label>
+                    <CurrencyInput
+                      value={formData.tarif_flat || 0}
+                      onChange={(val) => setFormData({ ...formData, tarif_flat: val })}
+                      className="shadow border rounded w-full py-2 pr-3 text-gray-700 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 )}
                 <div className="mb-4 md:col-span-2">
                   <label className="block text-gray-700 text-sm font-bold mb-2">Alamat</label>
-                  <textarea value={formData.alamat} onChange={(e) => setFormData({...formData, alamat: e.target.value})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" rows={3} />
+                  <textarea value={formData.alamat} onChange={(e) => setFormData({ ...formData, alamat: e.target.value })} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" rows={3} />
                 </div>
                 <div className="mb-6 md:col-span-2">
                   <label className="block text-gray-700 text-sm font-bold mb-2">Kota</label>
-                  <input type="text" value={formData.kota} onChange={(e) => setFormData({...formData, kota: e.target.value})} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" />
+                  <input type="text" value={formData.kota} onChange={(e) => setFormData({ ...formData, kota: e.target.value })} className="shadow border rounded w-full py-2 px-3 text-gray-700 focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
               <div className="flex justify-end gap-2">
@@ -428,26 +538,116 @@ export default function MasterPelanggan() {
       {isLinenModalOpen && activePelanggan && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center mb-4 pb-2 border-b">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b shrink-0">
               <h3 className="text-xl font-bold">Konfigurasi Linen & Harga: {activePelanggan.nama}</h3>
-              <button onClick={() => setIsLinenModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24}/></button>
-            </div>
-            
-            <p className="text-sm text-gray-500 mb-4">Seret ikon <GripVertical size={14} className="inline text-gray-400"/> untuk mengubah urutan linen saat input nota pelanggan ini.</p>
-            
-            <div className="flex-1 overflow-y-auto min-h-[400px]">
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={linenConfig.map(c => c.id)} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-2 p-1">
-                    {linenConfig.map((item, index) => (
-                      <SortableLinenItem key={item.id} item={item} index={index} updateHarga={updateHarga} />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
+              <button onClick={() => setIsLinenModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
             </div>
 
-            <div className="mt-6 pt-4 border-t flex justify-end gap-3">
+            {/* Tabs Navigation */}
+            <div className="flex overflow-x-auto mb-4 border-b shrink-0">
+              <button
+                className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === 'harga_urutan' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('harga_urutan')}
+              >
+                Harga & Urutan Default
+              </button>
+              {(() => {
+                const isRS = activePelanggan.tipe?.toUpperCase() === 'RS';
+                if (isRS) return null; // RS hanya Kiloan, tidak ada konfigurasi spesifik jenis nota
+
+                const isFlat = activePelanggan.tipe_billing?.toUpperCase() === 'FLAT';
+                const filteredTabs = jenisNotaList.filter(j =>
+                  isFlat ? j.berlaku_flat : j.berlaku_reguler
+                );
+
+                return filteredTabs.map(jn => (
+                  <button
+                    key={jn.id}
+                    className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === jn.id.toString() ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => setActiveTab(jn.id.toString())}
+                  >
+                    Nota: {jn.nama}
+                  </button>
+                ));
+              })()}
+            </div>
+
+            {activeTab === 'harga_urutan' ? (
+              <>
+                <p className="text-sm text-gray-500 mb-4 shrink-0">Seret ikon <GripVertical size={14} className="inline text-gray-400" /> untuk mengubah urutan linen saat input nota pelanggan ini.</p>
+                <div className="flex-1 overflow-y-auto min-h-0 h-[400px]">
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={linenConfig.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                      <div className="space-y-2 p-1">
+                        {linenConfig.map((item, index) => (
+                          <SortableLinenItem key={item.id} item={item} index={index} updateHarga={updateHarga} />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 overflow-y-auto min-h-0 h-[400px] flex flex-col">
+                <p className="text-sm text-gray-500 mb-4 shrink-0">
+                  Centang linen yang tersedia untuk nota ini, dan seret <GripVertical size={14} className="inline text-gray-400" /> untuk mengubah urutan tampilnya. Jika dibiarkan kosong, semua linen akan tampil.
+                </p>
+                <div className="space-y-2 p-1 flex-1">
+                  {(() => {
+                    const jnId = Number(activeTab);
+                    const selectedIds = notaLinenConfig[jnId] || [];
+
+                    const selectedItems = selectedIds.map(id => linenConfig.find(c => c.linen_id === id)).filter(Boolean) as LinenConfigItem[];
+                    const unselectedItems = linenConfig.filter(c => !selectedIds.includes(c.linen_id));
+                    const tabItems = [...selectedItems, ...unselectedItems];
+
+                    const handleDrag = (event: any) => {
+                      const { active, over } = event;
+                      if (over && active.id !== over.id) {
+                        setNotaLinenConfig(prev => {
+                          const current = [...(prev[jnId] || [])];
+                          const activeIdNum = Number(active.id);
+                          const overIdNum = Number(over.id);
+
+                          if (!current.includes(activeIdNum)) return prev;
+
+                          const oldIndex = current.indexOf(activeIdNum);
+                          if (current.includes(overIdNum)) {
+                            const newIndex = current.indexOf(overIdNum);
+                            return { ...prev, [jnId]: arrayMove(current, oldIndex, newIndex) };
+                          } else {
+                            return { ...prev, [jnId]: arrayMove(current, oldIndex, current.length - 1) };
+                          }
+                        });
+                      }
+                    };
+
+                    return (
+                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDrag}>
+                        <SortableContext items={tabItems.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                          {tabItems.map(item => {
+                            const isSelected = selectedIds.includes(item.linen_id);
+                            const orderIdx = selectedIds.indexOf(item.linen_id);
+                            return (
+                              <SortableNotaLinenItem
+                                key={item.id}
+                                id={item.id}
+                                nama={item.nama}
+                                isSelected={isSelected}
+                                toggle={() => toggleNotaLinen(jnId, item.linen_id)}
+                                orderIdx={orderIdx}
+                              />
+                            );
+                          })}
+                        </SortableContext>
+                      </DndContext>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 pt-4 border-t flex justify-end gap-3 shrink-0">
               <button
                 onClick={() => setIsLinenModalOpen(false)}
                 className="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg"

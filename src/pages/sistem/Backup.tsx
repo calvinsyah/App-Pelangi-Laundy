@@ -13,7 +13,7 @@ export default function Backup() {
 
   const tables = [
     "pelanggan", "jenis_nota", "master_linen", "karyawan", "absensi", 
-    "pengaturan", "kop", "harga_pelanggan", "linen_pelanggan", "nota", "biaya", 
+    "pengaturan", "kop", "harga_pelanggan", "linen_pelanggan", "pelanggan_nota_linen", "nota", "biaya", 
     "payment_status", "locks", "utang", "gaji", "invoice_numbers", "invoice_counter", "backup_history"
   ];
 
@@ -101,6 +101,7 @@ export default function Backup() {
             DB_PAYMENT_STATUS: "payment_status", DB_INVOICE_NUMBERS: "invoice_numbers",
             DB_INVOICE_COUNTER: "invoice_counter", DB_BACKUP_HISTORY: "backup_history",
             DB_LINEN_PELANGGAN: "linen_pelanggan",
+            DB_PELANGGAN_NOTA_LINEN: "pelanggan_nota_linen",
           };
 
           for (const [key, value] of Object.entries(json.data)) {
@@ -203,7 +204,7 @@ export default function Backup() {
       allData['absensi'] = absensi;
 
       // Ambil master data full
-      const masterTables = ["pelanggan", "jenis_nota", "master_linen", "karyawan", "pengaturan", "kop", "harga_pelanggan", "payment_status", "utang"];
+      const masterTables = ["pelanggan", "jenis_nota", "master_linen", "karyawan", "pengaturan", "kop", "harga_pelanggan", "payment_status", "utang", "pelanggan_nota_linen"];
       for (const table of masterTables) {
         const { data } = await supabase.from(table).select('*');
         allData[table] = data;

@@ -110,6 +110,13 @@ export default function AbsensiGaji() {
 
       const pelangganMap = Object.fromEntries(pelangganList?.map(p => [p.id, p]) || []);
 
+      const { data: jnData } = await supabase.from('jenis_nota').select('*');
+      const jenisNotaList = jnData || [];
+
+      const checkIsNotaFlat = (nota: any) => {
+        return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+      };
+
       const kgHarian: Record<string, number> = {};
       const ongkosHarian: Record<string, number> = {};
       
@@ -118,7 +125,7 @@ export default function AbsensiGaji() {
         const pel = pelangganMap[nota.pelanggan_id];
         if (!pel) return;
 
-        if (pel.tipe?.toUpperCase() === "HOTEL" && pel.tipe_billing?.toUpperCase() === "FLAT" && (nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI")) return;
+        if (pel.tipe_billing?.toUpperCase() === "FLAT" && checkIsNotaFlat(nota)) return;
 
         let kg = 0;
         if (pel.tipe?.toUpperCase() === "RS") {

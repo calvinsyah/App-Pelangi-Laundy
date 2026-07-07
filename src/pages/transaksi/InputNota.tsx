@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -81,14 +81,14 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
     const fetchMasterData = async () => {
       const [pel, jenis] = await Promise.all([
         supabase.from('pelanggan').select('id, nama, tipe, tipe_billing, tarif_flat, tarif_rs'),
-        supabase.from('jenis_nota').select('id, nama, berlaku_reguler, berlaku_flat, linen_config, multiplier')
+        supabase.from('jenis_nota').select('id, nama, berlaku_reguler, berlaku_flat, multiplier')
       ]);
       setPelangganList(pel.data || []);
       
       // Pastikan ada KILOAN jika belum ada
       let jData = jenis.data || [];
       if (!jData.find(j => j.nama === 'KILOAN')) {
-        jData.push({ id: 0, nama: 'KILOAN', berlaku_reguler: true, berlaku_flat: false, linen_config: [], multiplier: 1 });
+        jData.push({ id: 0, nama: 'KILOAN', berlaku_reguler: true, berlaku_flat: false, multiplier: 1 });
       }
       setJenisNotaList(jData);
     };
@@ -100,29 +100,39 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
   const isFlat = selectedPelanggan?.tipe_billing?.toUpperCase() === 'FLAT';
 
   // Logika Filter Jenis Nota berdasarkan Tipe Pelanggan
-  const getFilteredJenisNota = () => {
-    if (!selectedPelanggan) return jenisNotaList;
+  const filteredJenisNotaList = useMemo(() => {
+    if (!selectedPelanggan) return jenisNotaList.filter(j => j.nama !== 'KILOAN');
     if (isRS) return jenisNotaList.filter(j => j.nama === 'KILOAN');
+    
+    // Selain RS (Hotel / Reguler), jangan tampilkan KILOAN
+    let baseList = jenisNotaList.filter(j => j.nama !== 'KILOAN');
+    
     if (selectedPelanggan.tipe?.toUpperCase() === 'HOTEL') {
-      if (isFlat) return jenisNotaList.filter(j => j.berlaku_flat);
-      return jenisNotaList.filter(j => j.berlaku_reguler);
+      if (isFlat) return baseList.filter(j => j.berlaku_flat);
+      return baseList.filter(j => j.berlaku_reguler);
     }
-    return jenisNotaList;
-  };
-  const filteredJenisNotaList = getFilteredJenisNota();
+    return baseList;
+  }, [jenisNotaList, selectedPelanggan, isRS, isFlat]);
 
-  // Auto-select jenis_nota jika RS
+  // Auto-select jenis_nota jika RS atau jika pilihan saat ini tidak valid
   useEffect(() => {
     if (isRS) {
       const kiloan = jenisNotaList.find(j => j.nama === 'KILOAN');
       if (kiloan && formData.jenis_nota_id !== kiloan.id.toString()) {
         setFormData(prev => ({ ...prev, jenis_nota_id: kiloan.id.toString() }));
       }
-    } else if (formData.pelanggan_id && !formData.jenis_nota_id && filteredJenisNotaList.length > 0) {
-      // Auto-select first available option to prevent empty state
-      setFormData(prev => ({ ...prev, jenis_nota_id: filteredJenisNotaList[0].id.toString() }));
+    } else if (formData.pelanggan_id && filteredJenisNotaList.length > 0) {
+      const isValid = filteredJenisNotaList.some(j => j.id.toString() === formData.jenis_nota_id);
+      if (!isValid && formData.jenis_nota_id !== filteredJenisNotaList[0].id.toString()) {
+        setFormData(prev => ({ ...prev, jenis_nota_id: filteredJenisNotaList[0].id.toString() }));
+      }
+    } else if (formData.pelanggan_id && filteredJenisNotaList.length === 0) {
+      // Jika tidak ada jenis nota yang tersedia untuk pelanggan ini
+      if (formData.jenis_nota_id !== '') {
+        setFormData(prev => ({ ...prev, jenis_nota_id: '' }));
+      }
     }
-  }, [formData.pelanggan_id, isRS, jenisNotaList, filteredJenisNotaList]);
+  }, [formData.pelanggan_id, isRS, jenisNotaList, filteredJenisNotaList, formData.jenis_nota_id]);
 
   // Fetch Base Linen Pelanggan Config
   useEffect(() => {
@@ -160,47 +170,59 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
     fetchLinenConfig();
   }, [formData.pelanggan_id]);
 
-  // Terapkan filter linen_config dari jenis_nota yang dipilih (2nd layer filter)
+  // Terapkan filter linen_config per-pelanggan per-jenis_nota (2nd layer filter)
   useEffect(() => {
-    if (!formData.jenis_nota_id || baseLinenConfig.length === 0) {
-      setDisplayedLinen([]);
-      return;
-    }
-    const selectedJenis = jenisNotaList.find(j => j.id.toString() === formData.jenis_nota_id);
-    if (!selectedJenis) return;
+    const applyFilter = async () => {
+      if (!formData.jenis_nota_id || baseLinenConfig.length === 0 || !formData.pelanggan_id) {
+        setDisplayedLinen([]);
+        return;
+      }
+      const selectedJenis = jenisNotaList.find(j => j.id.toString() === formData.jenis_nota_id);
+      if (!selectedJenis) return;
 
-    let finalLinen = [...baseLinenConfig];
-    
-    // Jika jenis nota memiliki linen_config, filter dan urutkan ulang berdasarkan itu!
-    if (selectedJenis.linen_config && selectedJenis.linen_config.length > 0) {
-      const allowedIds = new Set(selectedJenis.linen_config.map((c: any) => c.id));
-      const orderMap: Record<number, number> = {};
-      selectedJenis.linen_config.forEach((c: any) => {
-        orderMap[c.id] = c.urutan;
-      });
+      const pId = parseInt(formData.pelanggan_id);
+      const jnId = parseInt(formData.jenis_nota_id);
 
-      finalLinen = finalLinen.filter(l => allowedIds.has(l.linen_id));
-      finalLinen.sort((a, b) => {
-        const oa = orderMap[a.linen_id] ?? 999;
-        const ob = orderMap[b.linen_id] ?? 999;
-        return oa - ob;
-      });
-    }
+      // Fetch pelanggan_nota_linen config
+      const { data: notaLinenP } = await supabase
+        .from('pelanggan_nota_linen')
+        .select('*')
+        .eq('pelanggan_id', pId)
+        .eq('jenis_nota_id', jnId)
+        .order('urutan', { ascending: true });
 
-    // Apply multiplier to harga
-    const multiplier = selectedJenis.multiplier || 1;
-    finalLinen = finalLinen.map(l => ({ ...l, harga: Math.floor(l.harga * multiplier) }));
+      let finalLinen = [...baseLinenConfig];
 
-    // Inject edit quantities if editing
-    if (editItems) {
-      finalLinen = finalLinen.map(l => {
-        const found = editItems.find((ei: any) => (ei.linen_id === l.linen_id) || (ei.idMaster === l.linen_id));
-        return found ? { ...l, qty: found.qty, harga: found.harga || found.basePrice || l.harga } : l; // retain historical price if editing
-      });
-    }
+      if (notaLinenP && notaLinenP.length > 0) {
+        // Jika ada konfigurasi khusus untuk kombinasi pelanggan + nota ini:
+        const allowedIds = new Set(notaLinenP.map(c => c.linen_id));
+        finalLinen = finalLinen.filter(l => allowedIds.has(l.linen_id));
+        
+        // Urutkan sesuai dengan urutan di pelanggan_nota_linen
+        finalLinen.sort((a, b) => {
+          const idxA = notaLinenP.findIndex(c => c.linen_id === a.linen_id);
+          const idxB = notaLinenP.findIndex(c => c.linen_id === b.linen_id);
+          return idxA - idxB;
+        });
+      }
 
-    setDisplayedLinen(finalLinen);
-  }, [formData.jenis_nota_id, baseLinenConfig, jenisNotaList, editItems]);
+      // Apply multiplier to harga
+      const multiplier = selectedJenis.multiplier || 1;
+      finalLinen = finalLinen.map(l => ({ ...l, harga: Math.floor(l.harga * multiplier) }));
+
+      // Inject edit quantities if editing
+      if (editItems) {
+        finalLinen = finalLinen.map(l => {
+          const found = editItems.find((ei: any) => (ei.linen_id === l.linen_id) || (ei.idMaster === l.linen_id));
+          return found ? { ...l, qty: found.qty, harga: found.harga || found.basePrice || l.harga } : l; // retain historical price if editing
+        });
+      }
+
+      setDisplayedLinen(finalLinen);
+    };
+
+    applyFilter();
+  }, [formData.jenis_nota_id, formData.pelanggan_id, baseLinenConfig, jenisNotaList, editItems]);
 
 
   const updateQty = (index: number, val: string) => {
@@ -444,7 +466,7 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
             </div>
           )}
 
-          <div className="sticky bottom-0 bg-white p-4 border-t border-gray-200 shadow-[0_-4px_15px_-3px_rgba(0,0,0,0.1)] flex justify-between z-10 -mx-6 -mb-6 rounded-b-xl mt-8">
+          <div className="bg-white p-4 border-t border-gray-200 flex justify-between -mx-6 -mb-6 rounded-b-xl mt-8">
             {editNotaId ? (
               <button
                 type="button"
