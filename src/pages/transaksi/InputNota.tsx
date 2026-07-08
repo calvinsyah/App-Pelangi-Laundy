@@ -116,6 +116,8 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
 
   // Auto-select jenis_nota jika RS atau jika pilihan saat ini tidak valid
   useEffect(() => {
+    if (pelangganList.length === 0 || jenisNotaList.length === 0) return;
+
     if (isRS) {
       const kiloan = jenisNotaList.find(j => j.nama === 'KILOAN');
       if (kiloan && formData.jenis_nota_id !== kiloan.id.toString()) {
@@ -132,7 +134,7 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
         setFormData(prev => ({ ...prev, jenis_nota_id: '' }));
       }
     }
-  }, [formData.pelanggan_id, isRS, jenisNotaList, filteredJenisNotaList, formData.jenis_nota_id]);
+  }, [formData.pelanggan_id, isRS, jenisNotaList, filteredJenisNotaList, formData.jenis_nota_id, pelangganList.length]);
 
   // Fetch Base Linen Pelanggan Config
   useEffect(() => {

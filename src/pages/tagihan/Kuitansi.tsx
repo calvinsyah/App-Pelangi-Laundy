@@ -66,7 +66,8 @@ export default function Kuitansi() {
     const startDate = `${bln}-01`;
     const year = parseInt(bln.split('-')[0]);
     const month = parseInt(bln.split('-')[1]);
-    const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const [
       { data: dbNota },
