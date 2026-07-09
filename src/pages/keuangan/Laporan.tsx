@@ -40,7 +40,7 @@ export default function Laporan() {
         supabase.from('payment_status').select('*'),
         supabase.from('utang').select('*'),
         supabase.from('pengaturan').select('*').limit(1),
-        supabase.from('pelanggan').select('id, nama')
+        supabase.from('pelanggan').select('id, nama, tipe_billing, tarif_flat')
       ]);
 
       const pg = pengaturan?.[0] || {};
