@@ -45,7 +45,8 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         const startDate = `${bulanLalu}-01`;
         const year = parseInt(bulanLalu.split('-')[0]);
         const month = parseInt(bulanLalu.split('-')[1]);
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${bulanLalu}-${String(lastDay).padStart(2, '0')}`;
         const { count: countNota } = await supabase.from('nota').select('*', { count: 'exact', head: true }).gte('tanggal', startDate).lte('tanggal', endDate);
         
         if (countNota && countNota > 0) {

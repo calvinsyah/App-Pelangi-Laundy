@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { Save, Calendar, DollarSign, Edit, Printer, Download } from 'lucide-react';
 import { generateKopHTML, buildSlipGajiHTML, buildSlipGajiTetapHTML, openPrintWindow, downloadHTML } from '../../lib/printUtils';
 import { CurrencyInput } from '../../components/CurrencyInput';
+import { getLocalDateString } from '../../lib/utils';
 
 interface Karyawan {
   id: number;
@@ -20,14 +21,14 @@ interface Absensi {
 
 export default function AbsensiGaji() {
   const [karyawanList, setKaryawanList] = useState<Karyawan[]>([]);
-  const [absensiDate, setAbsensiDate] = useState(new Date().toISOString().split('T')[0]);
+  const [absensiDate, setAbsensiDate] = useState(getLocalDateString());
   const [attendance, setAttendance] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
   // Salary States
-  const [gajiMulai, setGajiMulai] = useState(new Date().toISOString().split('T')[0]);
-  const [gajiSelesai, setGajiSelesai] = useState(new Date(Date.now() + 13 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  const [gajiMulai, setGajiMulai] = useState(getLocalDateString());
+  const [gajiSelesai, setGajiSelesai] = useState(getLocalDateString(new Date(Date.now() + 13 * 24 * 60 * 60 * 1000)));
   const [salaryResults, setSalaryResults] = useState<any[]>([]);
   const [calcLoading, setCalcLoading] = useState(false);
 
@@ -114,7 +115,7 @@ export default function AbsensiGaji() {
       const jenisNotaList = jnData || [];
 
       const checkIsNotaFlat = (nota: any) => {
-        return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
+        return nota.jenis === "FLAT";
       };
 
       const kgHarian: Record<string, number> = {};
@@ -129,7 +130,7 @@ export default function AbsensiGaji() {
 
         let kg = 0;
         if (pel.tipe?.toUpperCase() === "RS") {
-          kg = nota.items?.reduce((s: number, it: any) => s + (Number(it.qty) || 0), 0) || 0;
+          kg = nota.berat_kg || nota.items?.reduce((s: number, it: any) => s + (Number(it.qty) || 0), 0) || 0;
         } else if (pel.tipe?.toUpperCase() === "HOTEL") {
           kg = (nota.total || 0) / tarifInternal;
         }
@@ -165,7 +166,7 @@ export default function AbsensiGaji() {
               return a2 ? a2.status === "Hadir" : true;
             }).length || 1;
             
-            upah = Math.floor(totalOngkosHariIni / hadirBorongan);
+            upah = Math.floor((ongkos / hadirBorongan) * totalKgHariIni);
             totalUpah += upah;
           }
           

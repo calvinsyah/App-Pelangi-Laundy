@@ -59,7 +59,7 @@ serve(async (req) => {
       const billingPel = pel.tipe_billing?.toUpperCase()
       const jenisNota = nota.jenis?.toUpperCase()
 
-      if (tipePel === "HOTEL" && billingPel === "FLAT" && (jenisNota === "FLAT" || jenisNota === "FLAT ASLI")) return
+      if (tipePel === "HOTEL" && billingPel === "FLAT" && jenisNota === "FLAT") return
 
       let kg = 0
       if (tipePel === "RS") {
@@ -94,7 +94,7 @@ serve(async (req) => {
             const a2 = absensiList?.find((a) => a.tanggal === tgl && a.karyawan_id === k2.id)
             return a2 ? a2.status === "Hadir" : true
           }).length || 1
-          upah = Math.floor((kg * ongkos) / hadir)
+          upah = Math.floor((ongkos / hadir) * kg)
           totalUpah += upah
         }
 

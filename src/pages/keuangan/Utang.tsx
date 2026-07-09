@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { Plus, Edit2, Trash2, Search, Check, DollarSign } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
-import { fmtRp, formatCurrencyInput, parseCurrencyValue } from '../../lib/utils';
+import { fmtRp, formatCurrencyInput, parseCurrencyValue, getLocalDateString } from '../../lib/utils';
 import { CurrencyInput } from '../../components/CurrencyInput';
 
 interface Utang {
@@ -134,7 +134,7 @@ export default function Utang() {
         kategori: "CICILAN UTANG",
         nominal: u.cicilan,
         lunas: true,
-        tanggal: new Date().toISOString().split('T')[0]
+        tanggal: getLocalDateString()
       }]);
 
       if (errBiaya) throw errBiaya;

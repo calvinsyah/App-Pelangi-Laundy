@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+import { getLocalDateString } from '../../lib/utils';
+
 interface ConfiguredLinen {
   linen_id: number;
   nama: string;
@@ -30,7 +32,7 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
   const [success, setSuccess] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    tanggal: new Date().toISOString().split('T')[0],
+    tanggal: getLocalDateString(),
     pelanggan_id: '',
     jenis_nota_id: '',
     berat_kg: 0,

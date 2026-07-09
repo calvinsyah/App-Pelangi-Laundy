@@ -54,7 +54,10 @@ export default function RiwayatNota() {
     if (filterBulan) {
       // Assuming filterBulan is 'YYYY-MM'
       const startDate = `${filterBulan}-01`;
-      const endDate = new Date(filterBulan.split('-')[0] as any, filterBulan.split('-')[1] as any, 0).toISOString().split('T')[0];
+      const year = parseInt(filterBulan.split('-')[0], 10);
+      const month = parseInt(filterBulan.split('-')[1], 10);
+      const lastDay = new Date(year, month, 0).getDate();
+      const endDate = `${filterBulan}-${String(lastDay).padStart(2, '0')}`;
       query = query.gte('tanggal', startDate).lte('tanggal', endDate);
     }
 

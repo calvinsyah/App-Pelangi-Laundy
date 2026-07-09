@@ -23,7 +23,8 @@ export default function Dashboard() {
         const blnPrefix = periode;
         const year = parseInt(periode.split('-')[0]);
         const month = parseInt(periode.split('-')[1]);
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${periode}-${String(lastDay).padStart(2, '0')}`;
 
         // Fetch paginated all-time data to avoid 1000 row limits
         const fetchAll = async (table: string, dateCol: string) => {
@@ -84,7 +85,7 @@ export default function Dashboard() {
           const isFlat = pData.tipe_billing?.toUpperCase() === 'FLAT';
           const notasCust = arrNota.filter((n) => n.pelanggan_id === pData.id && n.tanggal && n.tanggal.startsWith(prefixBln));
           if (notasCust.length === 0 && !isFlat) return 0;
-          
+
           let total = 0;
 
           if (isRS) {
@@ -95,6 +96,8 @@ export default function Dashboard() {
                   const price = hp ? hp.harga : 0;
                   total += (it.qty || 0) * price;
                 });
+              } else {
+                total += nota.total || (nota.berat_kg || 0) * (pData.tarif_rs || 0);
               }
             });
           } else if (isFlat) {
@@ -122,6 +125,7 @@ export default function Dashboard() {
         allBulanSet.add(blnPrefix);
 
         let totalOmsetBulanIni = 0;
+        let totalOmsetLunasBulanIni = 0;
         let totalPendapatanLunasAllTime = 0;
         let piutangAllTime = 0;
 
@@ -131,6 +135,9 @@ export default function Dashboard() {
             if (tagihan > 0) {
               if (bln === blnPrefix) {
                 totalOmsetBulanIni += tagihan;
+                if (isLunas(p.nama, bln)) {
+                  totalOmsetLunasBulanIni += tagihan;
+                }
               }
               if (isLunas(p.nama, bln)) {
                 totalPendapatanLunasAllTime += tagihan;
@@ -147,28 +154,28 @@ export default function Dashboard() {
           return biayasBulanIni.filter((b) => b.kategori === kat).reduce((s, b) => s + (b.nominal || 0), 0);
         };
 
-        const totalHPP = 
-          sumByKatBulanIni("GAJI BORONGAN") + 
-          sumByKatBulanIni("LISTRIK 1") + 
-          sumByKatBulanIni("LISTRIK 2") + 
-          sumByKatBulanIni("GAS") + 
-          sumByKatBulanIni("AIR") + 
-          sumByKatBulanIni("CHEMICAL") + 
-          sumByKatBulanIni("BBM") + 
+        const totalHPP =
+          sumByKatBulanIni("GAJI BORONGAN") +
+          sumByKatBulanIni("LISTRIK 1") +
+          sumByKatBulanIni("LISTRIK 2") +
+          sumByKatBulanIni("GAS") +
+          sumByKatBulanIni("AIR") +
+          sumByKatBulanIni("CHEMICAL") +
+          sumByKatBulanIni("BBM") +
           sumByKatBulanIni("PLASTIK");
 
         const totalPajak = sumByKatBulanIni("PPH PS 23");
 
-        const totalAdm = 
-          sumByKatBulanIni("GAJI TETAP") + 
-          sumByKatBulanIni("MAKAN") + 
-          sumByKatBulanIni("PERAWATAN MESIN") + 
-          sumByKatBulanIni("IURAN SAMPAH") + 
-          sumByKatBulanIni("IURAN RT") + 
+        const totalAdm =
+          sumByKatBulanIni("GAJI TETAP") +
+          sumByKatBulanIni("MAKAN") +
+          sumByKatBulanIni("PERAWATAN MESIN") +
+          sumByKatBulanIni("IURAN SAMPAH") +
+          sumByKatBulanIni("IURAN RT") +
           sumByKatBulanIni("LAIN-LAIN");
-          // Kategori "CICILAN UTANG" sengaja tidak dimasukkan agar tidak memotong Laba Bersih
+        // Kategori "CICILAN UTANG" sengaja tidak dimasukkan agar tidak memotong Laba Bersih
 
-        const laba = totalOmsetBulanIni - totalHPP - totalAdm - totalPajak;
+        const laba = totalOmsetLunasBulanIni - totalHPP - totalAdm - totalPajak;
 
         // 2. Neraca (Kumulatif All-Time)
         const biayaLunasAllTime = allBiayas.filter((b) => b.lunas).reduce((s, b) => s + (b.nominal || 0), 0);
@@ -220,7 +227,7 @@ export default function Dashboard() {
           />
         </div>
       </div>
-      
+
       <div className="mb-4 text-sm text-gray-500 font-medium">Laporan Laba / Rugi (Bulan {periode})</div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -231,7 +238,7 @@ export default function Dashboard() {
           <h3 className="text-sm font-medium text-gray-500 mb-1">Total HPP</h3>
           <p className="text-2xl font-bold text-red-600">{fmtRp(metrics.hpp)}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{background: 'linear-gradient(135deg, #f97316, #ea580c)'}}>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)' }}>
           <h3 className="text-sm font-medium text-orange-100 mb-1">Biaya Adm & Umum</h3>
           <p className="text-2xl font-bold text-white">{fmtRp(metrics.adm)}</p>
         </div>
@@ -245,19 +252,19 @@ export default function Dashboard() {
 
       <div className="mb-4 text-sm text-gray-500 font-medium">Neraca / Posisi Keuangan (Kumulatif All-Time hingga {periode})</div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{background: 'linear-gradient(135deg, #0d9488, #0f766e)'}}>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{ background: 'linear-gradient(135deg, #0d9488, #0f766e)' }}>
           <h3 className="text-sm font-medium text-teal-100 mb-1">Saldo Kas / Bank</h3>
           <p className="text-2xl font-bold text-white">{fmtRp(metrics.kas)}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{background: 'linear-gradient(135deg, #eab308, #ca8a04)'}}>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{ background: 'linear-gradient(135deg, #eab308, #ca8a04)' }}>
           <h3 className="text-sm font-medium text-yellow-100 mb-1">Total Piutang Usaha</h3>
           <p className="text-2xl font-bold text-white">{fmtRp(metrics.piutang)}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{background: 'linear-gradient(135deg, #b91c1c, #991b1b)'}}>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{ background: 'linear-gradient(135deg, #b91c1c, #991b1b)' }}>
           <h3 className="text-sm font-medium text-red-100 mb-1">Total Utang Usaha</h3>
           <p className="text-2xl font-bold text-white">{fmtRp(metrics.utang)}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{background: 'linear-gradient(135deg, #7c3aed, #6d28d9)'}}>
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100" style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}>
           <h3 className="text-sm font-medium text-purple-100 mb-1">Modal Bersih (Ekuitas)</h3>
           <p className="text-2xl font-bold text-white">{fmtRp(metrics.modal)}</p>
         </div>

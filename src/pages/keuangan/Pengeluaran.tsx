@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { Plus, Edit2, Trash2, Search, CheckCircle } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
-import { fmtRp, formatCurrencyInput, parseCurrencyValue } from '../../lib/utils';
+import { fmtRp, formatCurrencyInput, parseCurrencyValue, getLocalDateString } from '../../lib/utils';
 import { CurrencyInput } from '../../components/CurrencyInput';
 
 interface Biaya {
@@ -27,10 +27,14 @@ export default function Pengeluaran() {
   const [filterKat, setFilterKat] = useState('');
   
   // Tanggal 1 bulan ini
-  const firstDay = new Date();
-  firstDay.setDate(1);
-  const [filterMulai, setFilterMulai] = useState(firstDay.toISOString().split('T')[0]);
-  const [filterSelesai, setFilterSelesai] = useState(new Date().toISOString().split('T')[0]);
+  const getFirstDayOfMonthString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    return `${year}-${month}-01`;
+  };
+  const [filterMulai, setFilterMulai] = useState(getFirstDayOfMonthString());
+  const [filterSelesai, setFilterSelesai] = useState(getLocalDateString());
 
   const { confirm } = useConfirm();
   const { toast } = useToast();
@@ -38,7 +42,7 @@ export default function Pengeluaran() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
-    tanggal: new Date().toISOString().split('T')[0],
+    tanggal: getLocalDateString(),
     kategori: 'GAS',
     kategoriCustom: '',
     nominal: 0,
@@ -138,7 +142,7 @@ export default function Pengeluaran() {
           onClick={() => {
             setEditId(null);
             setFormData({
-              tanggal: new Date().toISOString().split('T')[0],
+              tanggal: getLocalDateString(),
               kategori: 'GAS',
               kategoriCustom: '',
               nominal: 0,

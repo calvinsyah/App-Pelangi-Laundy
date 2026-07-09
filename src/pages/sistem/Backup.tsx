@@ -188,7 +188,8 @@ export default function Backup() {
       const startDate = `${bulan}-01`;
       const year = parseInt(bulan.split('-')[0]);
       const month = parseInt(bulan.split('-')[1]);
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      const lastDay = new Date(year, month, 0).getDate();
+      const endDate = `${bulan}-${String(lastDay).padStart(2, '0')}`;
 
       const [
         { data: nota }, { data: biaya }, { data: gaji }, { data: absensi }

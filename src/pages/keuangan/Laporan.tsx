@@ -5,6 +5,7 @@ import { fmtRp } from '../../lib/utils';
 export default function Laporan() {
   const [data, setData] = useState({
     penjualan: 0,
+    lunasTotal: 0,
     totalHPP: 0,
     totalAdm: 0,
     labaBersih: 0,
@@ -23,7 +24,8 @@ export default function Laporan() {
       const startDate = `${periode}-01`;
       const year = parseInt(periode.split('-')[0]);
       const month = parseInt(periode.split('-')[1]);
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+      const lastDay = new Date(year, month, 0).getDate();
+      const endDate = `${periode}-${String(lastDay).padStart(2, '0')}`;
 
       const [
         { data: notas },
@@ -71,22 +73,22 @@ export default function Laporan() {
         const pid = parseInt(pidStr, 10);
         const p = pelangganMap[pid];
         if (!p) return;
-        
+
         const isFlat = p.tipe_billing?.toUpperCase() === "FLAT";
         let customerTotal = 0;
         const arrNota = notaByPelanggan[pid];
         let hasTransaction = false;
-        
+
         arrNota.forEach(n => {
           hasTransaction = true;
           if (isFlat && checkIsNotaFlat(n)) return;
           customerTotal += n.total || 0;
         });
-        
+
         if (isFlat && hasTransaction) {
           customerTotal += p.tarif_flat || 0;
         }
-        
+
         penjualan += customerTotal;
         const key = `${p.nama}_${periode}`;
         if (paidMap[key]) {
@@ -117,7 +119,7 @@ export default function Laporan() {
         }
       });
 
-      const labaBersih = penjualan - totalHPP - totalAdm;
+      const labaBersih = lunasTotal - totalHPP - totalAdm;
 
       let utang = biayaBelumDibayar;
       utangs?.forEach(u => {
@@ -131,6 +133,7 @@ export default function Laporan() {
 
       setData({
         penjualan,
+        lunasTotal,
         totalHPP,
         totalAdm,
         labaBersih,
@@ -188,9 +191,19 @@ export default function Laporan() {
                   <td className="p-3 font-semibold" colSpan={3}>1. PENJUALAN</td>
                 </tr>
                 <tr className="border-b border-gray-50">
-                  <td className="p-3 pl-8 text-gray-600">Penjualan Jasa</td>
+                  <td className="p-3 pl-8 text-gray-600">Penjualan Jasa (Lunas)</td>
                   <td></td>
-                  <td className="p-3 text-right font-medium text-gray-800">{fmtRp(data.penjualan)}</td>
+                  <td className="p-3 text-right font-medium text-gray-800">{fmtRp(data.lunasTotal)}</td>
+                </tr>
+                <tr className="border-b border-gray-50">
+                  <td className="p-3 pl-8 text-gray-600">Piutang Jasa (Belum Lunas)</td>
+                  <td></td>
+                  <td className="p-3 text-right font-medium text-gray-500">{fmtRp(data.piutang)}</td>
+                </tr>
+                <tr className="border-b border-gray-50 font-semibold bg-gray-50/50">
+                  <td className="p-3 pl-8 text-gray-700">Total Penjualan Jasa (Omset)</td>
+                  <td></td>
+                  <td className="p-3 text-right text-gray-700">{fmtRp(data.penjualan)}</td>
                 </tr>
                 <tr>
                   <td className="p-3 font-semibold" colSpan={3}>2. HARGA POKOK PENJUALAN (HPP)</td>
@@ -201,9 +214,9 @@ export default function Laporan() {
                   <td className="p-3 text-right font-medium text-gray-800">{fmtRp(data.totalHPP)}</td>
                 </tr>
                 <tr className="bg-gray-50 font-bold border-b border-gray-200">
-                  <td className="p-3">LABA KOTOR</td>
+                  <td className="p-3">LABA KOTOR (CASH BASIS)</td>
                   <td></td>
-                  <td className="p-3 text-right">{fmtRp(data.penjualan - data.totalHPP)}</td>
+                  <td className="p-3 text-right">{fmtRp(data.lunasTotal - data.totalHPP)}</td>
                 </tr>
                 <tr>
                   <td className="p-3 font-semibold" colSpan={3}>3. BIAYA ADMINISTRASI & UMUM</td>

@@ -99,3 +99,13 @@ export const formatCurrencyInput = (value: string | number): string => {
   if (!strVal) return "";
   return parseInt(strVal, 10).toLocaleString("id-ID");
 };
+
+/**
+ * Dapatkan string tanggal lokal YYYY-MM-DD tanpa pergeseran timezone UTC.
+ */
+export const getLocalDateString = (d: Date = new Date()): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const date = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${date}`;
+};

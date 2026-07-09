@@ -139,7 +139,7 @@ export const buildLinenRoomHTML = async (
   notas: any[],
   kopHTML: string
 ): Promise<string> => {
-  const isFlatCustomer = pel.tipe === "Hotel" && pel.tipe_billing === "Flat";
+  const isFlatCustomer = pel.tipe?.toUpperCase() === "HOTEL" && pel.tipe_billing?.toUpperCase() === "FLAT";
 
   // Ambil master linen dan konfigurasi pelanggan
   const [mlRes, lpRes, hpRes] = await Promise.all([
@@ -179,12 +179,8 @@ export const buildLinenRoomHTML = async (
     const dateObj = new Date(nota.tanggal);
     const day = dateObj.getDate();
 
-    // Jika pelanggan flat ambil nota flat, jika pelanggan reguler ambil nota reguler
-    if (isFlatCustomer) {
-      if (nota.jenis !== "FLAT") return;
-    } else {
-      if (nota.jenis !== "REGULER") return;
-    }
+    // Linen room HANYA mengambil nota FLAT ASLI secara absolut
+    if (nota.jenis?.toUpperCase() !== "FLAT ASLI") return;
 
     if (nota.items && Array.isArray(nota.items)) {
       nota.items.forEach((it: any) => {
@@ -228,7 +224,7 @@ export const buildLinenRoomHTML = async (
       totalQty += q;
     }
 
-    if (totalQty === 0 && !isFlatCustomer) return;
+    if (totalQty === 0) return;
 
     rowNum++;
     const amount = totalQty * data.price;
@@ -381,7 +377,7 @@ export const buildInvoicePelangganHTML = async (
         <tbody>
             ${detailRows}
             <tr class="total-row">
-                <td colspan="2" style="text-align:right; border: 1px solid #cbd5e1;">TOTAL DUE</td>
+                <td colspan="2" style="text-align:right; border: 1px solid #cbd5e1;">TOTAL</td>
                 <td style="text-align:right; border: 1px solid #cbd5e1;">${fmtRp(grandTotal)}</td>
             </tr>
         </tbody>
