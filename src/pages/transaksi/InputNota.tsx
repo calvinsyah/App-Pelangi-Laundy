@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { getLocalDateString } from '../../lib/utils';
+import { useToast } from '../../components/ToastProvider';
 
 interface ConfiguredLinen {
   linen_id: number;
@@ -23,13 +24,12 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
   const location = useLocation();
   const navigate = useNavigate();
   const editNotaId = propsEditId || location.state?.editNotaId;
+  const { toast } = useToast();
 
   const [pelangganList, setPelangganList] = useState<any[]>([]);
   const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     tanggal: getLocalDateString(),
@@ -41,20 +41,6 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
   const [baseLinenConfig, setBaseLinenConfig] = useState<ConfiguredLinen[]>([]);
   const [displayedLinen, setDisplayedLinen] = useState<ConfiguredLinen[]>([]);
   const [editItems, setEditItems] = useState<any[] | null>(null);
-
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => setError(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [error]);
-
-  useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => setSuccess(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success]);
 
   // Fetch Nota for Editing
   useEffect(() => {
@@ -239,8 +225,6 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-    setSuccess(null);
 
     const validItems = displayedLinen.filter(item => item.qty > 0).map(item => ({
       linen_id: item.linen_id,
@@ -252,12 +236,12 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
     let valid = true;
     if (isRS) {
       if (formData.berat_kg <= 0) {
-        setError('Berat (Kg) harus lebih dari 0 untuk nota Kiloan/RS.');
+        toast('Berat (Kg) harus lebih dari 0 untuk nota Kiloan/RS.', 'error');
         valid = false;
       }
     } else {
       if (validItems.length === 0) {
-        setError('Harus ada minimal 1 item dengan kuantitas > 0 untuk nota Reguler.');
+        toast('Harus ada minimal 1 item dengan kuantitas > 0 untuk nota Reguler.', 'error');
         valid = false;
       }
     }
@@ -294,7 +278,7 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
           .update(notaData)
           .eq('id', editNotaId);
         if (notaErr) throw notaErr;
-        setSuccess('Nota berhasil diperbarui!');
+        toast('Nota berhasil diperbarui!', 'success');
         if (onSuccessCb) onSuccessCb();
         else setTimeout(() => navigate('/transaksi/riwayat'), 1500);
       } else {
@@ -303,13 +287,13 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
           .from('nota')
           .insert([{ ...notaData, nota_id }]);
         if (notaErr) throw notaErr;
-        setSuccess('Nota berhasil disimpan!');
+        toast('Nota berhasil disimpan!', 'success');
         setFormData({ ...formData, berat_kg: 0 });
         setDisplayedLinen(displayedLinen.map(l => ({ ...l, qty: 0 })));
         if (onSuccessCb) onSuccessCb();
       }
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan');
+      toast(err.message || 'Terjadi kesalahan', 'error');
     }
     setLoading(false);
   };
@@ -317,9 +301,6 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
   if (isModal) {
     return (
       <div className="bg-white p-4">
-        {error && <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm">{error}</div>}
-        {success && <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded shadow-sm">{success}</div>}
-
         <form onSubmit={handleSubmit}>
           {/* Header info readonly for Modal Edit */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -391,9 +372,6 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
       </h2>
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-4xl">
-        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
-        {success && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">{success}</div>}
-        
         <form onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             <div>
