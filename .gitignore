@@ -19,3 +19,8 @@ style.css.bak
 index.html.bak
 playwright-report/
 test-results/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
