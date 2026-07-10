@@ -3,9 +3,24 @@ import { supabase } from '../lib/supabaseClient';
 import { fmtRp } from '../lib/utils';
 import { getLastDayOfMonth } from '../lib/dateUtils';
 import { checkIsNotaFlat, hitungTagihan, HPP_CATEGORIES, ADM_CATEGORIES } from '../lib/keuangan';
-
+import { useDashboardMetrics } from '../lib/queries';
 export default function Dashboard() {
   const [periode, setPeriode] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  const { data: metricsData, isLoading } = useDashboardMetrics(periode);
+  const loading = isLoading;
+  
+  const metrics = metricsData || {
+    omset: 0,
+    hpp: 0,
+    adm: 0,
+    laba: 0,
+    piutang: 0,
+    utang: 0,
+    kas: 0,
+    modal: 0
+  };
+
+  /*
   const [metrics, setMetrics] = useState({
     omset: 0,
     hpp: 0,
@@ -148,6 +163,7 @@ export default function Dashboard() {
     }
     calculateMetrics();
   }, [periode]);
+  */
 
   if (loading) return <div className="text-gray-500 flex items-center justify-center min-h-[400px]">Loading Dashboard...</div>;
 
