@@ -2,7 +2,7 @@
  * Print & Download Utilities for Pelangi Laundry
  */
 import { supabase } from './supabaseClient';
-import { fmtRp, terbilang } from './utils';
+import { fmtRp, terbilang, escapeHtml } from './utils';
 /**
  * Generate HTML kop surat persis seperti v24
  */
@@ -20,16 +20,16 @@ export const generateKopHTML = (kop: any, logoUrl?: string | null): string => {
       ${logoHtml}
       <div style="line-height: 1.4;">
         <h1 style="font-size: 24px; font-weight: 900; color: #1e3a5f; margin: 0 0 6px 0; letter-spacing: 1px; text-transform: uppercase;">
-          ${kop.nama}
+          ${escapeHtml(kop.nama)}
         </h1>
         <p style="font-size: 13px; color: #334155; margin: 0;">
-          ${kop.alamat || ''}
+          ${escapeHtml(kop.alamat || '')}
         </p>
         <p style="font-size: 13px; color: #334155; margin: 0;">
-          Telp: ${kop.telepon || ''} | Email: ${kop.email || ''}
+          Telp: ${escapeHtml(kop.telepon || '')} | Email: ${escapeHtml(kop.email || '')}
         </p>
         <p style="font-size: 13px; color: #334155; margin: 0;">
-          Contact Person: ${kop.kontak || ''}
+          Contact Person: ${escapeHtml(kop.kontak || '')}
         </p>
       </div>
     </div>
@@ -204,7 +204,7 @@ export const buildLinenRoomHTML = async (
   let html = `<div style="font-family:'Segoe UI',Arial,sans-serif;font-size:13px;margin:0 auto;max-width:100%;">
     ${kopHTML}
     <h2 style="text-align:center;margin:0 0 4px 0;">LINEN ROOM</h2>
-    <p style="text-align:center;margin:0 0 12px 0;font-size:14px;">${pel.nama} | ${namaBulan} ${jenisNota ? `| ${jenisNota}` : ''}</p>
+    <p style="text-align:center;margin:0 0 12px 0;font-size:14px;">${escapeHtml(pel.nama)} | ${namaBulan} ${jenisNota ? `| ${escapeHtml(jenisNota)}` : ''}</p>
     <table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:auto;border:1px solid #999;">
       <thead>
         <tr style="background:#1e3a5f;color:white;">
@@ -241,7 +241,7 @@ export const buildLinenRoomHTML = async (
 
     html += `<tr>
       <td style="padding:5px 4px;text-align:center;border:1px solid #ccc;">${rowNum}</td>
-      <td style="padding:5px 4px;border:1px solid #ccc;">${data.name}</td>
+      <td style="padding:5px 4px;border:1px solid #ccc;">${escapeHtml(data.name)}</td>
       <td style="padding:5px 4px;text-align:right;border:1px solid #ccc;">${fmtRp(data.price).replace('Rp ', '')}</td>
       ${rowHtml}
       <td style="padding:5px 4px;text-align:right;font-weight:600;border:1px solid #ccc;">${totalQty}</td>
@@ -326,7 +326,7 @@ export const buildInvoicePelangganHTML = async (
       detailRows += `
             <tr>
                 <td style="text-align:center; padding: 8px 10px;">${counter}</td>
-                <td style="padding: 8px 10px;">${labelDesc}</td>
+                <td style="padding: 8px 10px;">${escapeHtml(labelDesc)}</td>
                 <td style="text-align:right; padding: 8px 10px; font-weight: 600;">${fmtRp(amount)}</td>
             </tr>`;
       counter++;
@@ -339,7 +339,7 @@ export const buildInvoicePelangganHTML = async (
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Invoice ${pel.nama} - ${bln}</title>
+    <title>Invoice ${escapeHtml(pel.nama)} - ${bln}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px 25px; color: #1e293b; font-size: 14px; background: #fff; }
@@ -368,9 +368,9 @@ export const buildInvoicePelangganHTML = async (
     </table>
     <div style="border-top: 1px solid #cbd5e1; margin-top: 15px; padding-top: 10px;">
         <div style="font-weight: 700; font-size: 14px; margin-bottom: 5px;">ATTENTION TO :</div>
-        <div style="font-size: 14px; margin-bottom: 3px;">${pel.nama}</div>
-        ${pel.alamat ? `<div style="font-size: 14px; margin-bottom: 3px;">${pel.alamat}</div>` : ""}
-        ${pel.kota ? `<div style="font-size: 14px; margin-bottom: 3px;">${pel.kota}</div>` : ""}
+        <div style="font-size: 14px; margin-bottom: 3px;">${escapeHtml(pel.nama)}</div>
+        ${pel.alamat ? `<div style="font-size: 14px; margin-bottom: 3px;">${escapeHtml(pel.alamat)}</div>` : ""}
+        ${pel.kota ? `<div style="font-size: 14px; margin-bottom: 3px;">${escapeHtml(pel.kota)}</div>` : ""}
     </div>
     <div style="border-top: 1px solid #cbd5e1; margin-top: 10px; margin-bottom: 15px;"></div>
     
@@ -395,16 +395,16 @@ export const buildInvoicePelangganHTML = async (
         <div style="flex: 1; font-size: 13px;">
             <p style="font-weight: 700; color: #1e3a5f; margin-bottom: 8px;">Payment Transfer to :</p>
             <table style="border-collapse: collapse; font-size: 13px;">
-                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Bank Name</td><td style="color: #334155;">: ${bankName}</td></tr>
-                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Account Name</td><td style="color: #334155;">: ${bankAccName}</td></tr>
-                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Account Number</td><td style="color: #334155;">: ${bankAccNo}</td></tr>
+                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Bank Name</td><td style="color: #334155;">: ${escapeHtml(bankName)}</td></tr>
+                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Account Name</td><td style="color: #334155;">: ${escapeHtml(bankAccName)}</td></tr>
+                <tr><td style="padding: 2px 10px 2px 0; color: #334155;">Account Number</td><td style="color: #334155;">: ${escapeHtml(bankAccNo)}</td></tr>
             </table>
         </div>
         <div style="text-align: center; min-width: 200px;">
             <div style="margin-bottom: 2px;">Surabaya, ${tglCetak}</div>
             <div style="font-weight: 700; margin-bottom: 60px;">Pelangi Laundry</div>
             <div class="signature-line"></div>
-            <div style="font-weight: 700;">${direktur}</div>
+            <div style="font-weight: 700;">${escapeHtml(direktur)}</div>
             <div style="font-size: 12px; color: #64748b;">Direktur</div>
         </div>
     </div>
@@ -420,7 +420,7 @@ export const buildSlipGajiHTML = (h: any, kopHTML: string): string => {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Slip Gaji ${k.nama}</title>
+  <title>Slip Gaji ${escapeHtml(k.nama)}</title>
   <style>
     body { font-family:'Segoe UI',Arial,sans-serif; margin:20px; color:#1e293b; } 
     table { width:100%; border-collapse:collapse; margin-bottom: 15px; } 
@@ -433,7 +433,7 @@ export const buildSlipGajiHTML = (h: any, kopHTML: string): string => {
 <body>
     ${kopHTML}
     <h2 style="text-align:center; color:#1e3a5f; text-decoration:underline;">SLIP UPAH KARYAWAN</h2>
-    <p><strong>Nama:</strong> ${k.nama} &nbsp;|&nbsp; <strong>Bagian:</strong> ${k.bagian || "-"} &nbsp;|&nbsp; <strong>Periode:</strong> ${h.periodeMulai} s/d ${h.periodeSelesai}</p>
+    <p><strong>Nama:</strong> ${escapeHtml(k.nama)} &nbsp;|&nbsp; <strong>Bagian:</strong> ${escapeHtml(k.bagian || "-")} &nbsp;|&nbsp; <strong>Periode:</strong> ${h.periodeMulai} s/d ${h.periodeSelesai}</p>
     <table>
         <tr><td>Upah Kerja</td><td style="text-align:right;">${fmtRp(h.totalUpah)}</td></tr>
         <tr><td>Insentif</td><td style="text-align:right;">${fmtRp(h.insentif)}</td></tr>
@@ -476,7 +476,7 @@ export const buildSlipGajiTetapHTML = (h: any, kopHTML: string): string => {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Slip Gaji Tetap ${k.nama}</title>
+  <title>Slip Gaji Tetap ${escapeHtml(k.nama)}</title>
   <style>
     body { font-family:'Segoe UI',Arial,sans-serif; margin:20px; color:#1e293b; } 
     table { width:100%; border-collapse:collapse; margin-bottom: 15px; } 
@@ -489,7 +489,7 @@ export const buildSlipGajiTetapHTML = (h: any, kopHTML: string): string => {
 <body>
     ${kopHTML}
     <h2 style="text-align:center; color:#1e3a5f; text-decoration:underline;">SLIP GAJI TETAP</h2>
-    <p><strong>Nama:</strong> ${k.nama} &nbsp;|&nbsp; <strong>Bagian:</strong> ${k.bagian || "-"} &nbsp;|&nbsp; <strong>Periode:</strong> ${h.periodeMulai} s/d ${h.periodeSelesai}</p>
+    <p><strong>Nama:</strong> ${escapeHtml(k.nama)} &nbsp;|&nbsp; <strong>Bagian:</strong> ${escapeHtml(k.bagian || "-")} &nbsp;|&nbsp; <strong>Periode:</strong> ${h.periodeMulai} s/d ${h.periodeSelesai}</p>
     <table>
         <tr><td>Gaji Pokok / Tetap</td><td style="text-align:right;">${fmtRp(h.gajiPokok || 0)}</td></tr>
         <tr><td>Insentif</td><td style="text-align:right;">${fmtRp(h.insentif)}</td></tr>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { getLocalDateString } from '../../lib/utils';
+import { getLocalDateString, getSafeErrorMessage } from '../../lib/utils';
 import { useToast } from '../../components/ToastProvider';
 
 interface ConfiguredLinen {
@@ -283,9 +283,9 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
         else setTimeout(() => navigate('/transaksi/riwayat'), 1500);
       } else {
         const nota_id = `${formData.tanggal.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`;
-        const { error: notaErr } = await supabase
-          .from('nota')
-          .insert([{ ...notaData, nota_id }]);
+        const { data, error: notaErr } = await supabase.functions.invoke("nota-create", {
+          body: { ...notaData, nota_id, isFlat }
+        });
         if (notaErr) throw notaErr;
         toast('Nota berhasil disimpan!', 'success');
         setFormData({ ...formData, berat_kg: 0 });
@@ -293,7 +293,8 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
         if (onSuccessCb) onSuccessCb();
       }
     } catch (err: any) {
-      toast(err.message || 'Terjadi kesalahan', 'error');
+      console.error('Detail error:', err);
+      toast(getSafeErrorMessage(err), 'error');
     }
     setLoading(false);
   };

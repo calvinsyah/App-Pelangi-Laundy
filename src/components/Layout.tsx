@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Receipt, FileText, PieChart, Users, Settings, LogOut, Shirt, Menu, X, ChevronDown, ChevronRight
@@ -27,7 +27,7 @@ export default function Layout() {
     setOpenGroups(prev => ({ ...prev, [group]: !prev[group] }));
   };
 
-  const navGroups = [
+  const navGroups = useMemo(() => [
     {
       name: 'Transaksi',
       items: [
@@ -67,9 +67,9 @@ export default function Layout() {
       ],
       adminOnly: true,
     }
-  ];
+  ], []);
 
-  const filteredGroups = navGroups.filter(g => isAdmin || !g.adminOnly);
+  const filteredGroups = useMemo(() => navGroups.filter(g => isAdmin || !g.adminOnly), [navGroups, isAdmin]);
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">

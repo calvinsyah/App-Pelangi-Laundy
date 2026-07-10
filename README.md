@@ -18,3 +18,10 @@ View your app in AI Studio: https://ai.studio/apps/4cb80bf3-57fb-47bb-af6e-0633e
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Deployment Notes
+
+Aplikasi ini di-hosting di **Cloudflare Pages**. 
+Wajib menambahkan Environment Variables berikut di dashboard Cloudflare:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`

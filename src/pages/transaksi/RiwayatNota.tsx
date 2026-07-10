@@ -4,7 +4,7 @@ import { Edit2, Trash2, Search, Eye, X } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../components/AuthContext';
-import { fmtRp } from '../../lib/utils';
+import { fmtRp, getSafeErrorMessage } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import InputNota from './InputNota';
 
@@ -80,7 +80,8 @@ export default function RiwayatNota() {
     if (ok) {
       const { error } = await supabase.from('nota').delete().eq('id', id);
       if (error) {
-        toast(error.message, 'error');
+        console.error('Detail error:', error);
+        toast(getSafeErrorMessage(error), 'error');
       } else {
         toast('Nota berhasil dihapus', 'success');
         fetchNota();
@@ -98,9 +99,11 @@ export default function RiwayatNota() {
     return n.total || 0;
   };
 
-  const filteredNota = notaList.filter(n => 
-    n.pelanggan?.nama?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredNota = React.useMemo(() => {
+    return notaList.filter(n => 
+      n.pelanggan?.nama?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [notaList, searchQuery]);
 
   return (
     <div>

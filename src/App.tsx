@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase } from './lib/supabaseClient';
@@ -7,27 +7,37 @@ import { supabase } from './lib/supabaseClient';
 import { ToastProvider, useToast } from './components/ToastProvider';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { AuthProvider, useAuth } from './components/AuthContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Pages
-import Login from './pages/Login';
+const Login = lazy(() => import('./pages/Login'));
 import Layout from './components/Layout';
-import Dashboard from './pages/Dashboard';
-import MasterLinen from './pages/master/MasterLinen';
-import MasterKaryawan from './pages/master/MasterKaryawan';
-import MasterJenisNota from './pages/master/MasterJenisNota';
-import MasterPelanggan from './pages/master/MasterPelanggan';
-import InputNota from './pages/transaksi/InputNota';
-import RiwayatNota from './pages/transaksi/RiwayatNota';
-import Pengeluaran from './pages/keuangan/Pengeluaran';
-import Laporan from './pages/keuangan/Laporan';
-import Utang from './pages/keuangan/Utang';
-import Tagihan from './pages/tagihan/Tagihan';
-import Kuitansi from './pages/tagihan/Kuitansi';
-import AbsensiGaji from './pages/keuangan/AbsensiGaji';
-import Backup from './pages/sistem/Backup';
-import Pengaturan from './pages/sistem/Pengaturan';
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const MasterLinen = lazy(() => import('./pages/master/MasterLinen'));
+const MasterKaryawan = lazy(() => import('./pages/master/MasterKaryawan'));
+const MasterJenisNota = lazy(() => import('./pages/master/MasterJenisNota'));
+const MasterPelanggan = lazy(() => import('./pages/master/MasterPelanggan'));
+const InputNota = lazy(() => import('./pages/transaksi/InputNota'));
+const RiwayatNota = lazy(() => import('./pages/transaksi/RiwayatNota'));
+const Pengeluaran = lazy(() => import('./pages/keuangan/Pengeluaran'));
+const Laporan = lazy(() => import('./pages/keuangan/Laporan'));
+const Utang = lazy(() => import('./pages/keuangan/Utang'));
+const Tagihan = lazy(() => import('./pages/tagihan/Tagihan'));
+const Kuitansi = lazy(() => import('./pages/tagihan/Kuitansi'));
+const AbsensiGaji = lazy(() => import('./pages/keuangan/AbsensiGaji'));
+const Backup = lazy(() => import('./pages/sistem/Backup'));
+const Pengaturan = lazy(() => import('./pages/sistem/Pengaturan'));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useAuth();
@@ -77,13 +87,15 @@ const AdminRoute = () => {
 
 function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <ConfirmProvider>
           <AuthProvider>
             <BrowserRouter>
-              <Routes>
-                <Route path="/login" element={<Login />} />
+              <Suspense fallback={<div>Memuat...</div>}>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
                 <Route
                   path="/"
                   element={
@@ -117,11 +129,13 @@ function App() {
                   </Route>
                 </Route>
               </Routes>
+              </Suspense>
             </BrowserRouter>
           </AuthProvider>
         </ConfirmProvider>
       </ToastProvider>
     </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

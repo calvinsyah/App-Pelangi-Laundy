@@ -109,3 +109,28 @@ export const getLocalDateString = (d: Date = new Date()): string => {
   const date = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${date}`;
 };
+
+/**
+ * HTML Escaping to prevent XSS
+ */
+export const escapeHtml = (unsafe: string | null | undefined): string => {
+  if (!unsafe) return "";
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
+/**
+ * Pemetaan Error Supabase ke Pesan Bahasa Indonesia yang Aman
+ */
+export const getSafeErrorMessage = (err: any): string => {
+  if (!err) return "Terjadi kesalahan sistem. Coba lagi.";
+  const code = err?.code;
+  if (code === "23505") return "Data sudah ada (duplikat).";
+  if (code === "23503") return "Data referensi tidak valid.";
+  if (err?.message && err.message.includes("JWT expired")) return "Sesi habis, silakan login kembali.";
+  return "Terjadi kesalahan sistem. Coba lagi.";
+};

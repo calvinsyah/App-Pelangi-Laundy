@@ -7,6 +7,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { CurrencyInput } from '../../components/CurrencyInput';
+import { getSafeErrorMessage } from '../../lib/utils';
 
 interface Pelanggan {
   id: number;
@@ -175,7 +176,8 @@ export default function MasterPelanggan() {
     if (ok) {
       const { error } = await supabase.from('pelanggan').delete().eq('id', id);
       if (error) {
-        toast(error.message, 'error');
+        console.error('Detail error:', error);
+        toast(getSafeErrorMessage(error), 'error');
       } else {
         toast('Pelanggan berhasil dihapus', 'success');
         fetchPelanggan();

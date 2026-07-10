@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { fmtRp } from '../../lib/utils';
+import { getMonthRange } from '../../lib/dateUtils';
+import { checkIsNotaFlat, HPP_CATEGORIES } from '../../lib/keuangan';
 
 export default function Laporan() {
   const [data, setData] = useState({
@@ -21,11 +23,7 @@ export default function Laporan() {
   const fetchLaporan = async () => {
     setLoading(true);
     try {
-      const startDate = `${periode}-01`;
-      const year = parseInt(periode.split('-')[0]);
-      const month = parseInt(periode.split('-')[1]);
-      const lastDay = new Date(year, month, 0).getDate();
-      const endDate = `${periode}-${String(lastDay).padStart(2, '0')}`;
+      const { start: startDate, end: endDate } = getMonthRange(periode);
 
       const [
         { data: notas },
@@ -65,10 +63,6 @@ export default function Laporan() {
       const { data: jnData } = await supabase.from('jenis_nota').select('*');
       const jenisNotaList = jnData || [];
 
-      const checkIsNotaFlat = (nota: any) => {
-        return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
-      };
-
       Object.keys(notaByPelanggan).forEach(pidStr => {
         const pid = parseInt(pidStr, 10);
         const p = pelangganMap[pid];
@@ -98,7 +92,6 @@ export default function Laporan() {
         }
       });
 
-      const hppCategories = ["GAS", "AIR", "LISTRIK 1", "LISTRIK 2", "CHEMICAL", "BBM", "PLASTIK", "PPH PS 23", "GAJI BORONGAN"];
       let totalHPP = 0;
       let totalAdm = 0;
       let biayaDibayar = 0;
@@ -106,7 +99,7 @@ export default function Laporan() {
 
       biayas?.forEach(b => {
         const nominal = b.nominal || 0;
-        if (hppCategories.includes(b.kategori)) {
+        if (HPP_CATEGORIES.includes(b.kategori)) {
           totalHPP += nominal;
         } else {
           totalAdm += nominal;

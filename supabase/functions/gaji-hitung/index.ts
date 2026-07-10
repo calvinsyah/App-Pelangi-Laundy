@@ -18,6 +18,33 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } }
     )
 
+    const { data: authData, error: authErr } = await supabaseClient.auth.getUser()
+    if (authErr || !authData.user) {
+      throw new Error('Unauthorized')
+    }
+
+    const { data: profileData, error: profileErr } = await supabaseClient
+      .from('profiles')
+      .select('role')
+      .eq('id', authData.user.id)
+      .single()
+
+    if (profileErr || !profileData) {
+      throw new Error('Profil pengguna tidak ditemukan')
+    }
+
+    if (profileData.role !== 'admin') {
+      return new Response(
+        JSON.stringify({
+          error: 'Akses ditolak. Hanya admin yang bisa menghitung gaji.',
+        }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
     const payload = await req.json()
     const { tglMulai, tglSelesai } = payload
 

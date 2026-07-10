@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabaseClient';
 import { Plus, Edit2, Trash2, Search, Check, DollarSign } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -18,8 +19,7 @@ interface Utang {
 }
 
 export default function Utang() {
-  const [utangs, setUtangs] = useState<Utang[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   
   const { confirm } = useConfirm();
@@ -37,25 +37,87 @@ export default function Utang() {
     status: 'AKTIF'
   });
 
-  const fetchUtangs = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('utang')
-      .select('*')
-      .order('id', { ascending: false });
-    
-    if (error) {
-      console.error('Error fetching utang:', error);
-      toast('Gagal mengambil data utang', 'error');
-    } else {
-      setUtangs(data || []);
+  const { data: utangs = [], isLoading: loading } = useQuery({
+    queryKey: ['utang'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('utang')
+        .select('*')
+        .order('id', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching utang:', error);
+        toast('Gagal mengambil data utang', 'error');
+        throw error;
+      }
+      return data || [];
     }
-    setLoading(false);
-  };
+  });
 
-  useEffect(() => {
-    fetchUtangs();
-  }, []);
+  const saveMutation = useMutation({
+    mutationFn: async (dataToSave: any) => {
+      if (editId) {
+        const { error } = await supabase.from('utang').update(dataToSave).eq('id', editId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('utang').insert([dataToSave]);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      toast(`Utang berhasil ${editId ? 'diubah' : 'ditambahkan'}`, 'success');
+      setIsModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['utang'] });
+    },
+    onError: () => {
+      toast(`Gagal ${editId ? 'mengubah' : 'menambahkan'} utang`, 'error');
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const { error } = await supabase.from('utang').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast('Utang dihapus', 'success');
+      queryClient.invalidateQueries({ queryKey: ['utang'] });
+    },
+    onError: () => {
+      toast('Gagal menghapus utang', 'error');
+    }
+  });
+
+  const bayarMutation = useMutation({
+    mutationFn: async (u: Utang) => {
+      const { error: errBiaya } = await supabase.from('biaya').insert([{
+        kategori: "CICILAN UTANG",
+        nominal: u.cicilan,
+        lunas: true,
+        tanggal: getLocalDateString()
+      }]);
+      if (errBiaya) throw errBiaya;
+
+      const newSisa = u.sisa_bulan - 1;
+      const newStatus = newSisa <= 0 ? 'LUNAS' : 'AKTIF';
+      
+      const { error: errUtang } = await supabase.from('utang').update({
+        sisa_bulan: newSisa,
+        status: newStatus
+      }).eq('id', u.id);
+      if (errUtang) throw errUtang;
+      
+      return { u, newSisa };
+    },
+    onSuccess: (data) => {
+      toast(`Berhasil membayar cicilan ${data.u.nama}. Sisa: ${data.newSisa} bulan`, 'success');
+      queryClient.invalidateQueries({ queryKey: ['utang'] });
+    },
+    onError: (err) => {
+      console.error(err);
+      toast('Terjadi kesalahan saat membayar cicilan', 'error');
+    }
+  });
 
   const calculateSisaBulan = (dari: string, sampai: string) => {
     if (!dari || !sampai) return 0;
@@ -74,7 +136,7 @@ export default function Utang() {
     setFormData(prev => ({ ...prev, sampai: val, sisa_bulan: newSisa > 0 ? newSisa : 0 }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     const dataToSave = {
@@ -87,37 +149,13 @@ export default function Utang() {
       status: formData.status
     };
 
-    if (editId) {
-      const { error } = await supabase.from('utang').update(dataToSave).eq('id', editId);
-      if (!error) {
-        toast('Utang berhasil diubah', 'success');
-        setIsModalOpen(false);
-        fetchUtangs();
-      } else {
-        toast('Gagal mengubah utang', 'error');
-      }
-    } else {
-      const { error } = await supabase.from('utang').insert([dataToSave]);
-      if (!error) {
-        toast('Utang berhasil ditambahkan', 'success');
-        setIsModalOpen(false);
-        fetchUtangs();
-      } else {
-        toast('Gagal menambahkan utang', 'error');
-      }
-    }
+    saveMutation.mutate(dataToSave);
   };
 
   const handleDelete = async (id: number) => {
     const ok = await confirm('Yakin ingin menghapus data utang ini?');
     if (ok) {
-      const { error } = await supabase.from('utang').delete().eq('id', id);
-      if (!error) {
-        toast('Utang dihapus', 'success');
-        fetchUtangs();
-      } else {
-        toast('Gagal menghapus utang', 'error');
-      }
+      deleteMutation.mutate(id);
     }
   };
 
@@ -126,35 +164,8 @@ export default function Utang() {
       return toast('Utang sudah lunas!', 'warning');
     }
     const ok = await confirm(`Bayar cicilan bulan ini untuk ${u.nama} sebesar ${fmtRp(u.cicilan)}?`);
-    if (!ok) return;
-
-    try {
-      // 1. Insert ke tabel biaya
-      const { error: errBiaya } = await supabase.from('biaya').insert([{
-        kategori: "CICILAN UTANG",
-        nominal: u.cicilan,
-        lunas: true,
-        tanggal: getLocalDateString()
-      }]);
-
-      if (errBiaya) throw errBiaya;
-
-      // 2. Update utang (sisa_bulan - 1)
-      const newSisa = u.sisa_bulan - 1;
-      const newStatus = newSisa <= 0 ? 'LUNAS' : 'AKTIF';
-      
-      const { error: errUtang } = await supabase.from('utang').update({
-        sisa_bulan: newSisa,
-        status: newStatus
-      }).eq('id', u.id);
-
-      if (errUtang) throw errUtang;
-
-      toast(`Berhasil membayar cicilan ${u.nama}. Sisa: ${newSisa} bulan`, 'success');
-      fetchUtangs();
-    } catch (err) {
-      console.error(err);
-      toast('Terjadi kesalahan saat membayar cicilan', 'error');
+    if (ok) {
+      bayarMutation.mutate(u);
     }
   };
 
