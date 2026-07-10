@@ -137,7 +137,8 @@ export const buildLinenRoomHTML = async (
   pel: any,
   bln: string,
   notas: any[],
-  kopHTML: string
+  kopHTML: string,
+  jenisNota?: string
 ): Promise<string> => {
   const isFlatCustomer = pel.tipe?.toUpperCase() === "HOTEL" && pel.tipe_billing?.toUpperCase() === "FLAT";
 
@@ -151,6 +152,14 @@ export const buildLinenRoomHTML = async (
   const masterLinen = mlRes.data || [];
   const linenP = lpRes.data || [];
   const hargaP = hpRes.data || [];
+
+  let multiplier = 1;
+  if (jenisNota) {
+    const { data: jnData } = await supabase.from('jenis_nota').select('multiplier').eq('nama', jenisNota).maybeSingle();
+    if (jnData && jnData.multiplier) {
+      multiplier = jnData.multiplier;
+    }
+  }
 
   // Urutkan linen sesuai konfigurasi
   let config = masterLinen.map(ml => {
@@ -170,7 +179,7 @@ export const buildLinenRoomHTML = async (
 
   const grid: Record<number, any> = {};
   config.forEach(item => {
-    grid[item.id] = { name: item.nama, price: item.harga, qty: {} };
+    grid[item.id] = { name: item.nama, price: item.harga * multiplier, qty: {} };
     for (let d = 1; d <= 31; d++) grid[item.id].qty[d] = 0;
   });
 
@@ -179,8 +188,7 @@ export const buildLinenRoomHTML = async (
     const dateObj = new Date(nota.tanggal);
     const day = dateObj.getDate();
 
-    // Linen room HANYA mengambil nota FLAT ASLI secara absolut
-    if (nota.jenis?.toUpperCase() !== "FLAT ASLI") return;
+    // Ambil semua nota yang dikirim dari UI (yang sudah difilter oleh dropdown Jenis Nota)
 
     if (nota.items && Array.isArray(nota.items)) {
       nota.items.forEach((it: any) => {
@@ -196,7 +204,7 @@ export const buildLinenRoomHTML = async (
   let html = `<div style="font-family:'Segoe UI',Arial,sans-serif;font-size:13px;margin:0 auto;max-width:100%;">
     ${kopHTML}
     <h2 style="text-align:center;margin:0 0 4px 0;">LINEN ROOM</h2>
-    <p style="text-align:center;margin:0 0 12px 0;font-size:14px;">${pel.nama} | ${namaBulan}</p>
+    <p style="text-align:center;margin:0 0 12px 0;font-size:14px;">${pel.nama} | ${namaBulan} ${jenisNota ? `| ${jenisNota}` : ''}</p>
     <table style="width:100%;border-collapse:collapse;font-size:11px;table-layout:auto;border:1px solid #999;">
       <thead>
         <tr style="background:#1e3a5f;color:white;">
@@ -220,7 +228,7 @@ export const buildLinenRoomHTML = async (
     let totalQty = 0, rowHtml = "";
     for (let d = 1; d <= 31; d++) {
       const q = data.qty[d];
-      rowHtml += `<td style="padding:3px 2px;text-align:center;border:1px solid #ccc;">${q > 0 ? q : ""}</td>`;
+      rowHtml += `<td style="padding:3px 2px;text-align:center;border:1px solid #ccc;">${q}</td>`;
       totalQty += q;
     }
 
@@ -249,7 +257,7 @@ export const buildLinenRoomHTML = async (
     config.forEach(item => {
       if (grid[item.id]) dayTotal += grid[item.id].qty[d] || 0;
     });
-    html += `<td style="padding:6px 2px;text-align:center;border:1px solid #999;">${dayTotal > 0 ? dayTotal : ""}</td>`;
+    html += `<td style="padding:6px 2px;text-align:center;border:1px solid #999;">${dayTotal}</td>`;
   }
 
   html += `<td style="padding:6px 4px;text-align:right;border:1px solid #999;">${grandTotalQty}</td>

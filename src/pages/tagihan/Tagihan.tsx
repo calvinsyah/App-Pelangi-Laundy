@@ -36,6 +36,9 @@ export default function Tagihan() {
   const [selectedPelanggan, setSelectedPelanggan] = useState('');
   const [selectedBulan, setSelectedBulan] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
   
+  const [activeTab, setActiveTab] = useState<'invoice' | 'linen_room'>('invoice');
+  const [selectedJenisNota, setSelectedJenisNota] = useState('');
+
   const [invoiceData, setInvoiceData] = useState<any[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [snapshotData, setSnapshotData] = useState<any>(null);
@@ -43,6 +46,11 @@ export default function Tagihan() {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   
   const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
+
+  // Filter data for Linen Room based on selectedJenisNota
+  const filteredInvoiceData = selectedJenisNota
+    ? invoiceData.filter(n => n.jenis === selectedJenisNota)
+    : invoiceData;
 
   useEffect(() => {
     async function fetchData() {
@@ -203,13 +211,13 @@ export default function Tagihan() {
 
   const handleDownloadExcel = async () => {
     const rawPelData = pelangganList.find(p => p.nama === selectedPelanggan);
-    if (!rawPelData || invoiceData.length === 0) return;
+    if (!rawPelData || filteredInvoiceData.length === 0) return;
     const pelData = { ...rawPelData, ...(snapshotData || {}) };
     
     setLoading(true);
     const { data: kopData } = await supabase.from('kop').select('*').single();
     const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
-    const html = await buildLinenRoomHTML(pelData, selectedBulan, invoiceData, kopHTML);
+    const html = await buildLinenRoomHTML(pelData, selectedBulan, filteredInvoiceData, kopHTML, selectedJenisNota);
     
     // Extract the table from HTML to put into Excel
     // We can do this easily by wrapping it
@@ -224,7 +232,7 @@ export default function Tagihan() {
         </style>
       </head>
       <body>
-        <h2>Linen Room - ${pelData.nama} - ${selectedBulan}</h2>
+        <h2>Linen Room - ${pelData.nama} - ${selectedBulan} ${selectedJenisNota ? `(${selectedJenisNota})` : ''}</h2>
         ${html.match(/<table[\s\S]*?<\/table>/)?.[0] || '<table><tr><td>Gagal mengambil tabel</td></tr></table>'}
       </body>
       </html>
@@ -240,12 +248,12 @@ export default function Tagihan() {
 
   const handleCetakLinenRoom = async () => {
     const rawPelData = pelangganList.find(p => p.nama === selectedPelanggan);
-    if (!rawPelData || invoiceData.length === 0) return;
+    if (!rawPelData || filteredInvoiceData.length === 0) return;
     const pelData = { ...rawPelData, ...(snapshotData || {}) };
     setLoading(true);
     const { data: kopData } = await supabase.from('kop').select('*').single();
     const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
-    const html = await buildLinenRoomHTML(pelData, selectedBulan, invoiceData, kopHTML);
+    const html = await buildLinenRoomHTML(pelData, selectedBulan, filteredInvoiceData, kopHTML, selectedJenisNota);
     openPrintWindow(html, `Linen Room - ${pelData.nama}`);
     setLoading(false);
   };
@@ -281,10 +289,31 @@ export default function Tagihan() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Modul Tagihan (Invoice)</h2>
+      <div className="flex justify-between items-end mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">Modul Tagihan & Laporan</h2>
+      </div>
+
+      <div className="flex gap-4 border-b border-gray-200 mb-6">
+        <button
+          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-colors ${
+            activeTab === 'invoice' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+          onClick={() => setActiveTab('invoice')}
+        >
+          Invoice Bulanan
+        </button>
+        <button
+          className={`py-2 px-4 font-semibold text-sm border-b-2 transition-colors ${
+            activeTab === 'linen_room' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+          onClick={() => setActiveTab('linen_room')}
+        >
+          Laporan Linen Room
+        </button>
+      </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-gray-700 text-sm font-bold mb-2">Pelanggan</label>
             <select
@@ -307,14 +336,29 @@ export default function Tagihan() {
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          {activeTab === 'linen_room' && (
+            <div>
+              <label className="block text-gray-700 text-sm font-bold mb-2">Jenis Nota (Filter)</label>
+              <select
+                value={selectedJenisNota}
+                onChange={(e) => setSelectedJenisNota(e.target.value)}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">-- Semua Jenis Nota --</option>
+                {jenisNotaList.map(jn => (
+                  <option key={jn.id} value={jn.nama}>{jn.nama}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
-      {selectedPelanggan && (
+      {selectedPelanggan && activeTab === 'invoice' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 lg:col-span-2">
             <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-800">Detail Rincian</h3>
+              <h3 className="text-lg font-bold text-gray-800">Detail Rincian Invoice</h3>
               <div className="text-sm font-semibold text-gray-500">{invoiceNumber}</div>
             </div>
 
@@ -344,7 +388,6 @@ export default function Tagihan() {
                       const itemTotal = calculateTotal(nota, pel);
                       const displayTotal = isFlatCustomer && isNotaFlat ? 0 : itemTotal;
                       
-                      // Jika customer flat, dan notanya flat, mungkin totalnya 0 tapi tetap tampil di rincian
                       return (
                         <tr key={nota.id} className="border-b border-gray-50">
                           <td className="py-2 text-gray-800">{new Date(nota.tanggal).toLocaleDateString('id-ID')}</td>
@@ -410,25 +453,68 @@ export default function Tagihan() {
               <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100">Dokumen Invoice</h3>
               <div className="space-y-3">
                 <button
-                  onClick={handleCetakLinenRoom}
-                  disabled={loading || invoiceData.length === 0}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  <Printer size={18} /> Cetak Linen Room
-                </button>
-                <button
                   onClick={handleCetakInvoice}
                   disabled={loading || invoiceData.length === 0}
                   className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                 >
                   <FileText size={18} /> Cetak Invoice
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedPelanggan && activeTab === 'linen_room' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 lg:col-span-2">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-800">Detail Laporan Linen Room</h3>
+            </div>
+
+            {loading ? (
+              <div className="text-gray-500">Loading data...</div>
+            ) : filteredInvoiceData.length === 0 ? (
+              <div className="text-gray-500">Tidak ada nota pada bulan ini untuk filter tersebut.</div>
+            ) : (
+              <div className="space-y-4">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-gray-600 font-medium">
+                      <th className="pb-2">Tanggal</th>
+                      <th className="pb-2">Jenis</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredInvoiceData.map((nota, idx) => (
+                      <tr key={nota.id} className="border-b border-gray-50">
+                        <td className="py-2 text-gray-800">{new Date(nota.tanggal).toLocaleDateString('id-ID')}</td>
+                        <td className="py-2 text-gray-600">{nota.jenis}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100">Cetak & Unduh</h3>
+              <div className="space-y-3">
+                <button
+                  onClick={handleCetakLinenRoom}
+                  disabled={loading || filteredInvoiceData.length === 0}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  <Printer size={18} /> Cetak Linen Room
+                </button>
                 <button
                   onClick={handleDownloadExcel}
-                  disabled={invoiceData.length === 0}
+                  disabled={loading || filteredInvoiceData.length === 0}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Download size={18} /> Unduh Linen Room (Excel)
+                  <Download size={18} /> Unduh Excel
                 </button>
               </div>
             </div>
