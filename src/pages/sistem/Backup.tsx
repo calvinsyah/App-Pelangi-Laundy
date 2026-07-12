@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { Download, Upload, RefreshCw, Trash2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Download, Upload, RefreshCw, Trash2, CheckCircle, AlertTriangle, Calendar } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 
@@ -8,6 +8,7 @@ export default function Backup() {
   const [loading, setLoading] = useState(false);
   const [notaMonths, setNotaMonths] = useState<string[]>([]);
   const [backedUpMonths, setBackedUpMonths] = useState<string[]>([]);
+  const [purgeMonth, setPurgeMonth] = useState('');
   const { confirm } = useConfirm();
   const { toast } = useToast();
 
@@ -155,6 +156,39 @@ export default function Backup() {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handlePurgeDataLama = async () => {
+    if (!purgeMonth) {
+      toast('Silakan pilih bulan batas pembersihan!', 'error');
+      return;
+    }
+    
+    const ok1 = await confirm(`Apakah Anda yakin ingin menghapus SEMUA data transaksi (Nota, Biaya, Gaji, Absensi) sebelum bulan ${purgeMonth}?`);
+    if (!ok1) return;
+
+    const ok2 = await confirm('Tindakan ini permanen. Pastikan Anda sudah mem-backup data pada periode tersebut. Lanjutkan?');
+    if (!ok2) return;
+
+    setLoading(true);
+    toast(`Menghapus transaksi sebelum ${purgeMonth}...`, 'info');
+    
+    try {
+      const purgeDateLimit = `${purgeMonth}-01`;
+      
+      await supabase.from('nota').delete().lt('tanggal', purgeDateLimit);
+      await supabase.from('biaya').delete().lt('tanggal', purgeDateLimit);
+      await supabase.from('gaji').delete().lt('periode_mulai', purgeDateLimit);
+      await supabase.from('absensi').delete().lt('tanggal', purgeDateLimit);
+      
+      toast(`Data transaksi sebelum ${purgeMonth} berhasil dibersihkan.`, 'success');
+      fetchStatus();
+      setPurgeMonth('');
+    } catch (e) {
+      console.error(e);
+      toast('Gagal membersihkan data.', 'error');
+    }
+    setLoading(false);
   };
 
   const handleBersihkanData = async () => {
@@ -350,8 +384,34 @@ export default function Backup() {
           </div>
         </div>
 
+        <div className="border-t border-orange-100 pt-6 space-y-4">
+          <h3 className="text-lg font-bold text-orange-700">Hapus Data Transaksi Lama (Archive)</h3>
+          <p className="text-sm text-orange-600">
+            Pilih bulan. Semua transaksi (Nota, Pengeluaran, Gaji) <strong>sebelum</strong> bulan yang dipilih akan dihapus permanen. Gunakan fitur ini untuk menghemat kapasitas database.
+          </p>
+          <div className="flex gap-4 items-end flex-wrap">
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-gray-700">Batas Waktu (Sebelum Bulan Ini)</label>
+              <input
+                type="month"
+                value={purgeMonth}
+                onChange={(e) => setPurgeMonth(e.target.value)}
+                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 sm:text-sm p-2 border"
+                disabled={loading}
+              />
+            </div>
+            <button
+              onClick={handlePurgeDataLama}
+              disabled={loading || !purgeMonth}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 px-6 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+            >
+              <Calendar size={18} /> Hapus Data Lama
+            </button>
+          </div>
+        </div>
+
         <div className="border-t border-red-100 pt-6 space-y-4">
-          <h3 className="text-lg font-bold text-red-700">Bersihkan Data (Maintenance)</h3>
+          <h3 className="text-lg font-bold text-red-700">Bersihkan Semua Data (Maintenance)</h3>
           <p className="text-sm text-red-500">
             Peringatan: Tindakan ini akan <strong>menghapus SEMUA data transaksi</strong> di dalam aplikasi (Nota, Pengeluaran, Gaji). Data Master (Pelanggan, Karyawan, dll) akan tetap aman. Harap lakukan Backup terlebih dahulu!
           </p>
