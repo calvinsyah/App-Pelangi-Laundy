@@ -54,7 +54,7 @@ serve(async (req) => {
     }
 
     // Calculate total if applicable
-    let total = 0
+    let total = payload.total || 0;
     if (!isKiloan && items && items.length > 0) {
       total = items.reduce((sum: number, item: any) => sum + ((Number(item.qty) || 0) * (Number(item.harga) || 0)), 0)
     }
