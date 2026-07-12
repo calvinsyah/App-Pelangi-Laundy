@@ -294,7 +294,23 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
       }
     } catch (err: any) {
       console.error('Detail error:', err);
-      toast(getSafeErrorMessage(err), 'error');
+      let errMsg = getSafeErrorMessage(err);
+      
+      // Attempt to extract real error message from Supabase FunctionsHttpError
+      try {
+        if (err.context && typeof err.context.json === 'function') {
+           const body = await err.context.json();
+           console.error("Parsed error body:", body);
+           if (body.error) errMsg = `Edge Error: ${body.error}`;
+        } else if (err.context && err.context.error) {
+           errMsg = `Edge Error: ${err.context.error}`;
+        }
+      } catch (e) {
+        console.error('Failed to parse edge function error body', e);
+      }
+
+      console.error("=== PESAN ERROR ASLI ===", errMsg);
+      toast(errMsg, 'error');
     }
     setLoading(false);
   };

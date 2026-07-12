@@ -18,9 +18,15 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } }
     )
 
-    const { data: authData, error: authErr } = await supabaseClient.auth.getUser()
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) throw new Error('Unauthorized: Missing Authorization header');
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: authData, error: authErr } = await supabaseClient.auth.getUser(token);
+    
     if (authErr || !authData.user) {
-      throw new Error('Unauthorized')
+      console.error("Auth error:", authErr);
+      throw new Error(`Unauthorized: ${authErr?.message || 'User not found'}`);
     }
 
     const { data: profileData, error: profileErr } = await supabaseClient
@@ -89,11 +95,10 @@ serve(async (req) => {
       if (tipePel === "HOTEL" && billingPel === "FLAT" && jenisNota === "FLAT") return
 
       let kg = 0
-      if (tipePel === "RS") {
-        // RS uses berat_kg because items are null
-        kg = Number(nota.berat_kg) || 0
+      if (jenisNota === "KILOAN") {
+        kg = Number(nota.berat_kg) || (nota.items?.reduce((s: number, it: any) => s + (Number(it.qty) || 0), 0)) || 0
       } else {
-        // Non-RS uses total / tarifInternal to estimate Kg equivalent
+        // Non-Kiloan uses total / tarifInternal to estimate Kg equivalent
         kg = (nota.total || 0) / tarifInternal
       }
 

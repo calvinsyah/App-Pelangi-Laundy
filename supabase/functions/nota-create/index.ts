@@ -19,28 +19,43 @@ serve(async (req) => {
     )
 
     // Get user from auth header to verify they are logged in
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !user) throw new Error('Unauthorized')
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) throw new Error('Unauthorized: Missing Authorization header');
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    
+    if (userError || !user) {
+      console.error("Auth error:", userError);
+      throw new Error(`Unauthorized: ${userError?.message || 'User not found'}`);
+    }
 
     const payload = await req.json()
-    const { tanggal, pelanggan_id, jenis_nota_id, berat_kg, items, isFlat } = payload
+    const { tanggal, pelanggan_id, jenis_nota_id, berat_kg, items, isFlat, nota_id } = payload
+
+    // Get the name of the jenis_nota
+    let jenis = 'KILOAN'
+    if (jenis_nota_id) {
+      const { data: jenisNota } = await supabaseClient.from('jenis_nota').select('nama').eq('id', jenis_nota_id).single()
+      if (jenisNota) {
+        jenis = jenisNota.nama
+      }
+    }
+    
+    const isKiloan = jenis === 'KILOAN'
 
     // Server-side validation
-    if (isFlat) {
-      if (berat_kg <= 0) throw new Error('Berat (Kg) harus > 0 untuk nota Flat')
+    if (isKiloan) {
+      if (berat_kg <= 0) throw new Error('Berat (Kg) harus > 0 untuk nota Kiloan/RS')
     } else {
       if (!items || items.length === 0) throw new Error('Harus ada item untuk nota Reguler')
       const totalQty = items.reduce((sum: number, item: any) => sum + Number(item.qty), 0)
       if (totalQty <= 0) throw new Error('Total qty item harus > 0')
     }
 
-    // Get the name of the jenis_nota
-    const { data: jenisNota } = await supabaseClient.from('jenis_nota').select('nama').eq('id', jenis_nota_id).single()
-    const jenis = jenisNota?.nama || 'KILOAN'
-
     // Calculate total if applicable
     let total = 0
-    if (!isFlat && items && items.length > 0) {
+    if (!isKiloan && items && items.length > 0) {
       total = items.reduce((sum: number, item: any) => sum + ((Number(item.qty) || 0) * (Number(item.harga) || 0)), 0)
     }
 
@@ -48,14 +63,15 @@ serve(async (req) => {
     const { data: nota, error: notaErr } = await supabaseClient
       .from('nota')
       .insert([{
+        nota_id,
         tanggal,
         pelanggan_id,
         jenis_nota_id,
         jenis,
-        berat_kg: isFlat ? berat_kg : null,
+        berat_kg: isKiloan ? berat_kg : null,
         status_bayar: 'Belum',
         total,
-        items: (!isFlat && items && items.length > 0) ? items : null
+        items: (!isKiloan && items && items.length > 0) ? items : null
       }])
       .select()
       .single()
@@ -67,9 +83,10 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     )
 
-  } catch (error: unknown) {
+  } catch (error: any) {
+    console.error("Error in nota-create:", error);
     return new Response(
-      JSON.stringify({ error: (error as Error).message }),
+      JSON.stringify({ error: error.message || JSON.stringify(error) }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
     )
   }
