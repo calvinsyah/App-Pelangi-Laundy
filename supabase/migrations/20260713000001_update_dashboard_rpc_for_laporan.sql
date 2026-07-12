@@ -1,5 +1,7 @@
 -- 20260713000001_update_dashboard_rpc_for_laporan.sql
 
+DROP FUNCTION IF EXISTS get_dashboard_metrics(text);
+
 CREATE OR REPLACE FUNCTION get_dashboard_metrics(p_periode text)
 RETURNS json
 LANGUAGE plpgsql
