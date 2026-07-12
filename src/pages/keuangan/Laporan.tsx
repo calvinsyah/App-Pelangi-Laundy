@@ -1,152 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { fmtRp } from '../../lib/utils';
-import { getMonthRange } from '../../lib/dateUtils';
-import { checkIsNotaFlat, HPP_CATEGORIES } from '../../lib/keuangan';
 import { generateKopHTML, openPrintWindow } from '../../lib/printUtils';
+import { useDashboardMetrics } from '../../lib/queries';
 
 export default function Laporan() {
-  const [data, setData] = useState({
-    penjualan: 0,
-    lunasTotal: 0,
-    totalHPP: 0,
-    totalAdm: 0,
-    labaBersih: 0,
-    kas: 0,
-    piutang: 0,
-    peralatan: 0,
-    utang: 0,
-    modal: 0
-  });
-  const [loading, setLoading] = useState(true);
   const [periode, setPeriode] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  const { data: metricsData, isLoading, isError, error } = useDashboardMetrics(periode);
 
-  const fetchLaporan = async () => {
-    setLoading(true);
-    try {
-      const { start: startDate, end: endDate } = getMonthRange(periode);
-
-      const [
-        { data: notas },
-        { data: biayas },
-        { data: paymentStatuses },
-        { data: utangs },
-        { data: pengaturan },
-        { data: pelanggan }
-      ] = await Promise.all([
-        supabase.from('nota').select('*').gte('tanggal', startDate).lte('tanggal', endDate),
-        supabase.from('biaya').select('*').gte('tanggal', startDate).lte('tanggal', endDate),
-        supabase.from('payment_status').select('*'),
-        supabase.from('utang').select('*'),
-        supabase.from('pengaturan').select('*').limit(1),
-        supabase.from('pelanggan').select('id, nama, tipe_billing, tarif_flat')
-      ]);
-
-      const pg = pengaturan?.[0] || {};
-      const peralatan = pg.peralatan || 0;
-      const pelangganMap = Object.fromEntries(pelanggan?.map(p => [p.id, p]) || []);
-
-      const paidMap: Record<string, boolean> = {};
-      paymentStatuses?.forEach(ps => {
-        paidMap[ps.key] = ps.is_paid;
-      });
-
-      let penjualan = 0;
-      let lunasTotal = 0;
-      let piutang = 0;
-
-      // Group notas by pelanggan_id
-      const notaByPelanggan: Record<number, any[]> = {};
-      notas?.forEach(n => {
-        if (!notaByPelanggan[n.pelanggan_id]) notaByPelanggan[n.pelanggan_id] = [];
-        notaByPelanggan[n.pelanggan_id].push(n);
-      });
-      const { data: jnData } = await supabase.from('jenis_nota').select('*');
-      const jenisNotaList = jnData || [];
-
-      Object.keys(notaByPelanggan).forEach(pidStr => {
-        const pid = parseInt(pidStr, 10);
-        const p = pelangganMap[pid];
-        if (!p) return;
-
-        const isFlat = p.tipe_billing?.toUpperCase() === "FLAT";
-        let customerTotal = 0;
-        const arrNota = notaByPelanggan[pid];
-        let hasTransaction = false;
-
-        arrNota.forEach(n => {
-          hasTransaction = true;
-          if (isFlat && checkIsNotaFlat(n)) return;
-          customerTotal += n.total || 0;
-        });
-
-        if (isFlat && hasTransaction) {
-          customerTotal += p.tarif_flat || 0;
-        }
-
-        penjualan += customerTotal;
-        const key = `${p.nama}_${periode}`;
-        if (paidMap[key]) {
-          lunasTotal += customerTotal;
-        } else {
-          piutang += customerTotal;
-        }
-      });
-
-      let totalHPP = 0;
-      let totalAdm = 0;
-      let biayaDibayar = 0;
-      let biayaBelumDibayar = 0;
-
-      biayas?.forEach(b => {
-        const nominal = b.nominal || 0;
-        if (HPP_CATEGORIES.includes(b.kategori)) {
-          totalHPP += nominal;
-        } else {
-          totalAdm += nominal;
-        }
-
-        if (b.lunas) {
-          biayaDibayar += nominal;
-        } else {
-          biayaBelumDibayar += nominal;
-        }
-      });
-
-      const labaBersih = lunasTotal - totalHPP - totalAdm;
-
-      let utang = biayaBelumDibayar;
-      utangs?.forEach(u => {
-        if (u.status === 'AKTIF') {
-          utang += (u.sisa_bulan || 0) * (u.cicilan || 0);
-        }
-      });
-
-      const kas = lunasTotal - biayaDibayar;
-      const modal = kas + piutang + peralatan - utang;
-
-      setData({
-        penjualan,
-        lunasTotal,
-        totalHPP,
-        totalAdm,
-        labaBersih,
-        kas,
-        piutang,
-        peralatan,
-        utang,
-        modal
-      });
-    } catch (err) {
-      console.error('Error generating report:', err);
-    } finally {
-      setLoading(false);
-    }
+  const data = {
+    penjualan: metricsData?.omset || 0,
+    lunasTotal: metricsData?.omset_lunas || 0,
+    totalHPP: metricsData?.hpp || 0,
+    totalAdm: metricsData?.adm || 0,
+    labaBersih: metricsData?.laba || 0,
+    kas: metricsData?.kas || 0,
+    piutang: metricsData?.piutang || 0,
+    peralatan: metricsData?.peralatan || 0,
+    utang: metricsData?.utang || 0,
+    modal: metricsData?.modal || 0
   };
-
-  useEffect(() => {
-    fetchLaporan();
-  }, [periode]);
 
   const getKop = async () => {
     const { data } = await supabase.from('kop').select('*').limit(1);
@@ -250,6 +123,15 @@ export default function Laporan() {
     openPrintWindow(html, `Laporan Keuangan - ${namaBulan}`);
   };
 
+  if (isLoading) return <div className="text-gray-500 flex items-center justify-center min-h-[400px]">Loading Laporan...</div>;
+  if (isError) return (
+    <div className="text-red-500 flex flex-col items-center justify-center min-h-[400px] text-center">
+      <p className="font-bold text-lg mb-2">Gagal memuat data laporan</p>
+      <p className="text-sm">Pastikan function get_dashboard_metrics sudah di-deploy dengan update terbaru.</p>
+      <p className="text-xs mt-2 text-gray-400">{String(error)}</p>
+    </div>
+  );
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6 no-print">
@@ -270,10 +152,7 @@ export default function Laporan() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="text-gray-500">Loading Laporan...</div>
-      ) : (
-        <div className="space-y-6">
+      <div className="space-y-6">
           {/* Laba Rugi */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <h3 className="text-lg font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100">📊 Laporan Laba Rugi</h3>
@@ -369,7 +248,6 @@ export default function Laporan() {
             </table>
           </div>
         </div>
-      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ export const useDashboardMetrics = (periode: string) => {
       if (error) throw error;
       return data;
     },
-    staleTime: 5 * 60 * 1000 // Cache for 5 minutes
+    staleTime: 30_000, // 30 seconds — dashboard harus responsif terhadap perubahan nota
+    refetchOnWindowFocus: true, // Override global setting agar data refresh saat user kembali ke tab
   });
 };

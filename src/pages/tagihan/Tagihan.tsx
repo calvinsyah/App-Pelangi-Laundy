@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Lock, Unlock, Check, X, FileText, Printer, Download } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { generateKopHTML, openPrintWindow, buildLinenRoomHTML, buildInvoicePelangganHTML } from '../../lib/printUtils';
 import { fmtRp, toRoman } from '../../lib/utils';
 
@@ -33,6 +34,7 @@ const calculateTotal = (nota: any, pel: any) => {
 export default function Tagihan() {
   const [pelangganList, setPelangganList] = useState<Pelanggan[]>([]);
   const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [selectedPelanggan, setSelectedPelanggan] = useState('');
   const [selectedBulan, setSelectedBulan] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
   
@@ -206,6 +208,7 @@ export default function Tagihan() {
     const { error } = await supabase.from('payment_status').upsert({ key: lockKey, is_paid: newPaid });
     if (!error) {
       setIsPaid(newPaid);
+      queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });
     }
   };
 

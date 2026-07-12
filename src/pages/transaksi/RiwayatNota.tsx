@@ -4,6 +4,7 @@ import { Edit2, Trash2, Search, Eye, X } from 'lucide-react';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../components/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
 import { fmtRp, getSafeErrorMessage } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import InputNota from './InputNota';
@@ -24,6 +25,7 @@ export default function RiwayatNota() {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [detailNota, setDetailNota] = useState<any>(null); // For modal
   const [editModalId, setEditModalId] = useState<number | null>(null);
@@ -84,6 +86,7 @@ export default function RiwayatNota() {
         toast(getSafeErrorMessage(error), 'error');
       } else {
         toast('Nota berhasil dihapus', 'success');
+        queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });
         fetchNota();
       }
     }

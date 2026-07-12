@@ -1,12 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import React, { useState } from 'react';
 import { fmtRp } from '../lib/utils';
-import { getLastDayOfMonth } from '../lib/dateUtils';
-import { checkIsNotaFlat, hitungTagihan, HPP_CATEGORIES, ADM_CATEGORIES } from '../lib/keuangan';
 import { useDashboardMetrics } from '../lib/queries';
+
 export default function Dashboard() {
   const [periode, setPeriode] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
-  const { data: metricsData, isLoading } = useDashboardMetrics(periode);
+  const { data: metricsData, isLoading, isError, error } = useDashboardMetrics(periode);
   const loading = isLoading;
   
   const metrics = metricsData || {
@@ -20,152 +18,15 @@ export default function Dashboard() {
     modal: 0
   };
 
-  /*
-  const [metrics, setMetrics] = useState({
-    omset: 0,
-    hpp: 0,
-    adm: 0,
-    laba: 0,
-    piutang: 0,
-    utang: 0,
-    kas: 0,
-    modal: 0
-  });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function calculateMetrics() {
-      setLoading(true);
-      try {
-        const blnPrefix = periode;
-        const endDate = getLastDayOfMonth(periode);
-
-        // Fetch paginated all-time data to avoid 1000 row limits
-        const fetchAll = async (table: string, dateCol: string) => {
-          let allData: any[] = [];
-          let from = 0;
-          let step = 1000;
-          while (true) {
-            const { data, error } = await supabase.from(table).select('*').lte(dateCol, endDate).range(from, from + step - 1);
-            if (error || !data || data.length === 0) break;
-            allData.push(...data);
-            if (data.length < step) break;
-            from += step;
-          }
-          return allData;
-        };
-
-        const [
-          allNotas,
-          allBiayas,
-          { data: paymentStatuses },
-          { data: utangs },
-          { data: pengaturan },
-          { data: pelangganData },
-          { data: hargaPelanggan },
-          { data: jenisNotaData }
-        ] = await Promise.all([
-          fetchAll('nota', 'tanggal'),
-          fetchAll('biaya', 'tanggal'),
-          supabase.from('payment_status').select('*').limit(10000),
-          supabase.from('utang').select('*').lte('inserted_at', endDate + 'T23:59:59').limit(10000),
-          supabase.from('pengaturan').select('*').limit(1),
-          supabase.from('pelanggan').select('*').limit(10000),
-          supabase.from('harga_pelanggan').select('*').limit(10000),
-          supabase.from('jenis_nota').select('*')
-        ]);
-
-        const jenisNotaList = jenisNotaData || [];
-
-        const pg = pengaturan?.[0] || {};
-        const peralatan = pg.peralatan || 0;
-        const pelangganList = pelangganData || [];
-
-        const paymentStatusMap: Record<string, boolean> = {};
-        paymentStatuses?.forEach(ps => {
-          paymentStatusMap[ps.key] = ps.is_paid;
-        });
-        const isLunas = (pelangganNama: string, blnYYYYMM: string) => {
-          return paymentStatusMap[`${pelangganNama}_${blnYYYYMM}`] === true;
-        };
-
-        // Extract all unique months
-        const allBulanSet = new Set<string>();
-        allNotas.forEach((nota) => {
-          if (nota.tanggal) allBulanSet.add(nota.tanggal.substring(0, 7));
-        });
-        allBulanSet.add(blnPrefix);
-
-        let totalOmsetBulanIni = 0;
-        let totalOmsetLunasBulanIni = 0;
-        let totalPendapatanLunasAllTime = 0;
-        let piutangAllTime = 0;
-
-        pelangganList.forEach((p) => {
-          allBulanSet.forEach((bln) => {
-            const tagihan = hitungTagihan(p, allNotas, bln, hargaPelanggan);
-            if (tagihan > 0) {
-              if (bln === blnPrefix) {
-                totalOmsetBulanIni += tagihan;
-                if (isLunas(p.nama, bln)) {
-                  totalOmsetLunasBulanIni += tagihan;
-                }
-              }
-              if (isLunas(p.nama, bln)) {
-                totalPendapatanLunasAllTime += tagihan;
-              } else {
-                piutangAllTime += tagihan;
-              }
-            }
-          });
-        });
-
-        // 1. Laba / Rugi (Periode Ini Saja)
-        const biayasBulanIni = allBiayas.filter(b => b.tanggal && b.tanggal.startsWith(blnPrefix));
-        
-        const totalHPP = biayasBulanIni.filter(b => HPP_CATEGORIES.includes(b.kategori)).reduce((s, b) => s + (b.nominal || 0), 0);
-        const totalAdm = biayasBulanIni.filter(b => ADM_CATEGORIES.includes(b.kategori)).reduce((s, b) => s + (b.nominal || 0), 0);
-
-        // Kategori "CICILAN UTANG" sengaja tidak dimasukkan agar tidak memotong Laba Bersih
-
-        const laba = totalOmsetLunasBulanIni - totalHPP - totalAdm;
-
-        // 2. Neraca (Kumulatif All-Time)
-        const biayaLunasAllTime = allBiayas.filter((b) => b.lunas).reduce((s, b) => s + (b.nominal || 0), 0);
-        const biayaBelumLunasAllTime = allBiayas.filter((b) => !b.lunas).reduce((s, b) => s + (b.nominal || 0), 0);
-
-        let utangPinjamanActive = 0;
-        utangs?.forEach((u) => {
-          if (u.status === "AKTIF") {
-            utangPinjamanActive += (u.sisa_bulan || 0) * (u.cicilan || 0);
-          }
-        });
-
-        const utang = biayaBelumLunasAllTime + utangPinjamanActive;
-        const kas = totalPendapatanLunasAllTime - biayaLunasAllTime; // "CICILAN UTANG" otomatis mengurangi kas karena ada di tabel biaya
-        const modal = kas + piutangAllTime + peralatan - utang;
-
-        setMetrics({
-          omset: totalOmsetBulanIni,
-          hpp: totalHPP,
-          adm: totalAdm,
-          laba,
-          piutang: piutangAllTime,
-          utang,
-          kas,
-          modal
-        });
-      } catch (err) {
-        console.error('Error calculating metrics:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    calculateMetrics();
-  }, [periode]);
-  */
 
   if (loading) return <div className="text-gray-500 flex items-center justify-center min-h-[400px]">Loading Dashboard...</div>;
+  if (isError) return (
+    <div className="text-red-500 flex flex-col items-center justify-center min-h-[400px] text-center">
+      <p className="font-bold text-lg mb-2">Gagal memuat data dashboard</p>
+      <p className="text-sm">Pastikan function get_dashboard_metrics sudah di-deploy.</p>
+      <p className="text-xs mt-2 text-gray-400">{String(error)}</p>
+    </div>
+  );
 
   return (
     <div>

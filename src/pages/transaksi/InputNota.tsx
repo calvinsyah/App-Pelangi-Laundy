@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { getLocalDateString, getSafeErrorMessage } from '../../lib/utils';
 import { useToast } from '../../components/ToastProvider';
@@ -25,6 +26,7 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
   const navigate = useNavigate();
   const editNotaId = propsEditId || location.state?.editNotaId;
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [pelangganList, setPelangganList] = useState<any[]>([]);
   const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
@@ -278,6 +280,7 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
           .update(notaData)
           .eq('id', editNotaId);
         if (notaErr) throw notaErr;
+        queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });
         toast('Nota berhasil diperbarui!', 'success');
         if (onSuccessCb) onSuccessCb();
         else setTimeout(() => navigate('/transaksi/riwayat'), 1500);
@@ -287,6 +290,7 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
           body: { ...notaData, nota_id, isFlat }
         });
         if (notaErr) throw notaErr;
+        queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });
         toast('Nota berhasil disimpan!', 'success');
         setFormData({ ...formData, berat_kg: 0 });
         setDisplayedLinen(displayedLinen.map(l => ({ ...l, qty: 0 })));
