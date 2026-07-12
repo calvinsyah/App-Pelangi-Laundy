@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { fmtRp } from '../../lib/utils';
 import { getMonthRange } from '../../lib/dateUtils';
 import { checkIsNotaFlat, HPP_CATEGORIES } from '../../lib/keuangan';
+import { generateKopHTML, openPrintWindow } from '../../lib/printUtils';
 
 export default function Laporan() {
   const [data, setData] = useState({
@@ -147,8 +148,106 @@ export default function Laporan() {
     fetchLaporan();
   }, [periode]);
 
-  const handlePrint = () => {
-    window.print();
+  const getKop = async () => {
+    const { data } = await supabase.from('kop').select('*').limit(1);
+    return generateKopHTML(data?.[0] || { nama: 'PELANGI LAUNDRY' }, data?.[0]?.logo_url);
+  };
+
+  const handlePrint = async () => {
+    const kopHTML = await getKop();
+    const namaBulan = new Date(periode + "-02").toLocaleDateString("id-ID", { month: "long", year: "numeric" }).toUpperCase();
+
+    const html = `
+      <div style="font-family:'Segoe UI',Arial,sans-serif;font-size:13px;max-width:800px;margin:0 auto;">
+        ${kopHTML}
+        <h2 style="text-align:center;margin:0 0 4px 0;text-decoration:underline;">LAPORAN KEUANGAN</h2>
+        <p style="text-align:center;margin:0 0 20px 0;font-size:14px;font-weight:600;">PERIODE: ${namaBulan}</p>
+        
+        <h3 style="margin-top:10px;margin-bottom:10px;background:#1e3a5f;color:white;padding:5px;">1. LAPORAN LABA RUGI</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+          <tr>
+            <td colspan="2" style="font-weight:bold;padding:4px;">PENDAPATAN JASA</td>
+          </tr>
+          <tr>
+            <td style="padding:4px;padding-left:20px;">Penjualan Lunas</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.lunasTotal)}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px;padding-left:20px;">Piutang Usaha</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.piutang)}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #ccc;border-top:1px solid #ccc;font-weight:bold;background:#f8fafc;">
+            <td style="padding:4px;padding-left:20px;">Total Penjualan / Omset</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.penjualan)}</td>
+          </tr>
+          
+          <tr>
+            <td colspan="2" style="font-weight:bold;padding:4px;padding-top:10px;">HARGA POKOK PENJUALAN</td>
+          </tr>
+          <tr>
+            <td style="padding:4px;padding-left:20px;">Total HPP</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.totalHPP)}</td>
+          </tr>
+          <tr style="border-bottom:1px solid #ccc;border-top:1px solid #ccc;font-weight:bold;background:#f8fafc;">
+            <td style="padding:4px;">LABA KOTOR</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.lunasTotal - data.totalHPP)}</td>
+          </tr>
+          
+          <tr>
+            <td colspan="2" style="font-weight:bold;padding:4px;padding-top:10px;">BIAYA OPERASIONAL / ADM</td>
+          </tr>
+          <tr>
+            <td style="padding:4px;padding-left:20px;">Total Biaya Administrasi & Umum</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.totalAdm)}</td>
+          </tr>
+          <tr style="border-bottom:2px solid #1e3a5f;border-top:2px solid #1e3a5f;font-weight:bold;background:#ecfdf5;color:#065f46;">
+            <td style="padding:8px;">LABA BERSIH</td>
+            <td style="text-align:right;padding:8px;font-size:15px;">${fmtRp(data.labaBersih)}</td>
+          </tr>
+        </table>
+        
+        <h3 style="margin-top:25px;margin-bottom:10px;background:#1e3a5f;color:white;padding:5px;">2. NERACA</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr style="background:#f1f5f9;font-weight:bold;">
+            <td colspan="2" style="padding:5px;border-bottom:1px solid #cbd5e1;">ASET (HARTA)</td>
+          </tr>
+          <tr>
+            <td style="padding:4px;padding-left:20px;">Kas / Bank</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.kas)}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px;padding-left:20px;">Piutang Usaha</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.piutang)}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px;padding-left:20px;border-bottom:1px solid #ccc;">Peralatan</td>
+            <td style="text-align:right;padding:4px;border-bottom:1px solid #ccc;">${fmtRp(data.peralatan)}</td>
+          </tr>
+          <tr style="font-weight:bold;">
+            <td style="padding:4px;padding-left:20px;">Total Aset</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.kas + data.piutang + data.peralatan)}</td>
+          </tr>
+          
+          <tr style="background:#f1f5f9;font-weight:bold;">
+            <td colspan="2" style="padding:5px;border-bottom:1px solid #cbd5e1;border-top:1px solid #cbd5e1;">KEWAJIBAN (UTANG)</td>
+          </tr>
+          <tr style="border-bottom:1px solid #ccc;">
+            <td style="padding:4px;padding-left:20px;">Utang Usaha</td>
+            <td style="text-align:right;padding:4px;">${fmtRp(data.utang)}</td>
+          </tr>
+          
+          <tr style="background:#f1f5f9;font-weight:bold;">
+            <td colspan="2" style="padding:5px;border-bottom:1px solid #cbd5e1;border-top:1px solid #cbd5e1;">MODAL</td>
+          </tr>
+          <tr style="font-weight:bold;">
+            <td style="padding:4px;padding-left:20px;">Modal Bersih</td>
+            <td style="text-align:right;padding:4px;font-size:15px;">${fmtRp(data.modal)}</td>
+          </tr>
+        </table>
+      </div>
+    `;
+    
+    openPrintWindow(html, `Laporan Keuangan - ${namaBulan}`);
   };
 
   return (
