@@ -58,7 +58,10 @@ export default function Backup() {
       toast('Ekspor seluruh data selesai!', 'success');
       
       const bulanLalu = new Date().toISOString().substring(0, 7);
-      await supabase.from('backup_history').upsert({ bulan: bulanLalu, tanggal_backup: new Date().toISOString() });
+      const { data: existing } = await supabase.from('backup_history').select('bulan').eq('bulan', bulanLalu).maybeSingle();
+      if (!existing) {
+        await supabase.from('backup_history').insert({ bulan: bulanLalu });
+      }
       fetchStatus();
       
     } catch (err) {
@@ -251,7 +254,10 @@ export default function Backup() {
       a.download = `pelangi_backup_${bulan}.json`;
       a.click();
       
-      await supabase.from('backup_history').upsert({ bulan, tanggal_backup: new Date().toISOString() });
+      const { data: existing } = await supabase.from('backup_history').select('bulan').eq('bulan', bulan).maybeSingle();
+      if (!existing) {
+        await supabase.from('backup_history').insert({ bulan });
+      }
       toast(`Backup bulan ${bulan} selesai!`, 'success');
       fetchStatus();
     } catch (err) {
