@@ -55,14 +55,19 @@ export default function Backup() {
       a.href = URL.createObjectURL(blob);
       a.download = `pelangi_backup_${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
-      toast('Ekspor seluruh data selesai!', 'success');
       
-      const bulanLalu = new Date().toISOString().substring(0, 7);
-      const { data: existing } = await supabase.from('backup_history').select('bulan').eq('bulan', bulanLalu).maybeSingle();
-      if (!existing) {
-        await supabase.from('backup_history').insert({ bulan: bulanLalu });
+      const ok = await confirm('Apakah file JSON berhasil terunduh dan tersimpan di perangkat Anda?');
+      if (ok) {
+        const bulanLalu = new Date().toISOString().substring(0, 7);
+        const { data: existing } = await supabase.from('backup_history').select('bulan').eq('bulan', bulanLalu).maybeSingle();
+        if (!existing) {
+          await supabase.from('backup_history').insert({ bulan: bulanLalu });
+        }
+        toast('Ekspor seluruh data selesai dan tercatat!', 'success');
+        fetchStatus();
+      } else {
+        toast('Pencatatan backup dibatalkan.', 'info');
       }
-      fetchStatus();
       
     } catch (err) {
       console.error(err);
@@ -301,12 +306,17 @@ export default function Backup() {
       a.download = `pelangi_backup_${bulan}.json`;
       a.click();
       
-      const { data: existing } = await supabase.from('backup_history').select('bulan').eq('bulan', bulan).maybeSingle();
-      if (!existing) {
-        await supabase.from('backup_history').insert({ bulan });
+      const ok = await confirm(`Apakah file backup bulan ${bulan} berhasil terunduh dan tersimpan?`);
+      if (ok) {
+        const { data: existing } = await supabase.from('backup_history').select('bulan').eq('bulan', bulan).maybeSingle();
+        if (!existing) {
+          await supabase.from('backup_history').insert({ bulan });
+        }
+        toast(`Backup bulan ${bulan} selesai dicatat!`, 'success');
+        fetchStatus();
+      } else {
+        toast('Pencatatan backup dibatalkan.', 'info');
       }
-      toast(`Backup bulan ${bulan} selesai!`, 'success');
-      fetchStatus();
     } catch (err) {
       console.error(err);
       toast('Backup gagal', 'error');
