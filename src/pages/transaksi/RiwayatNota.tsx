@@ -286,8 +286,8 @@ export default function RiwayatNota() {
                       <tr key={idx} className="border-b border-gray-100">
                         <td className="py-2 text-gray-800">{item.name || item.nama}</td>
                         <td className="py-2 text-right font-medium">{item.qty}</td>
-                        <td className="py-2 text-right text-gray-600">{fmtRp(item.basePrice || item.harga)}</td>
-                        <td className="py-2 text-right font-semibold">{fmtRp((item.basePrice || item.harga) * item.qty)}</td>
+                        <td className="py-2 text-right text-gray-600">{fmtRp(item.harga || item.basePrice)}</td>
+                        <td className="py-2 text-right font-semibold">{fmtRp((item.harga || item.basePrice) * item.qty)}</td>
                       </tr>
                     ))}
                   </tbody>
