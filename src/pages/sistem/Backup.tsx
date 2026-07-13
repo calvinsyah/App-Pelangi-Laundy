@@ -217,6 +217,29 @@ export default function Backup() {
 
       const { error: errAbsensi } = await supabase.from('absensi').delete().lt('tanggal', purgeDateLimit);
       if (errAbsensi) errors.push(`Absensi: ${errAbsensi.message}`);
+
+      const { error: errLocks } = await supabase.from('locks').delete().lt('bulan', purgeMonth);
+      if (errLocks) errors.push(`Locks: ${errLocks.message}`);
+
+      const { error: errPayment } = await supabase.from('payment_status').delete().lt('bulan', purgeMonth);
+      if (errPayment) errors.push(`Payment Status: ${errPayment.message}`);
+
+      const { data: invData, error: invFetchErr } = await supabase.from('invoice_numbers').select('cache_key');
+      if (invFetchErr) {
+        errors.push(`Invoice Numbers Fetch: ${invFetchErr.message}`);
+      } else if (invData) {
+        const keysToDelete = invData
+          .filter(r => {
+            const match = r.cache_key.match(/_(\d{4}-\d{2})$/);
+            return match && match[1] < purgeMonth;
+          })
+          .map(r => r.cache_key);
+
+        if (keysToDelete.length > 0) {
+          const { error: errInvDelete } = await supabase.from('invoice_numbers').delete().in('cache_key', keysToDelete);
+          if (errInvDelete) errors.push(`Invoice Numbers Delete: ${errInvDelete.message}`);
+        }
+      }
       
       if (errors.length > 0) {
         toast(`Gagal membersihkan tabel: ${errors.join(', ')}`, 'error');
@@ -255,6 +278,18 @@ export default function Backup() {
 
       const { error: errAbsensi } = await supabase.from('absensi').delete().neq('id', 0);
       if (errAbsensi) errors.push(`Absensi: ${errAbsensi.message}`);
+
+      const { error: errLocks } = await supabase.from('locks').delete().neq('key', '');
+      if (errLocks) errors.push(`Locks: ${errLocks.message}`);
+
+      const { error: errPayment } = await supabase.from('payment_status').delete().neq('key', '');
+      if (errPayment) errors.push(`Payment Status: ${errPayment.message}`);
+
+      const { error: errInvNum } = await supabase.from('invoice_numbers').delete().neq('cache_key', '');
+      if (errInvNum) errors.push(`Invoice Numbers: ${errInvNum.message}`);
+
+      const { error: errInvCount } = await supabase.from('invoice_counter').delete().neq('counter_key', '');
+      if (errInvCount) errors.push(`Invoice Counter: ${errInvCount.message}`);
 
       if (errors.length > 0) {
         toast(`Gagal membersihkan tabel: ${errors.join(', ')}`, 'error');
