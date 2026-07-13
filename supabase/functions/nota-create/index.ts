@@ -31,7 +31,7 @@ serve(async (req) => {
     }
 
     const payload = await req.json()
-    const { tanggal, pelanggan_id, jenis_nota_id, berat_kg, items, isFlat, nota_id } = payload
+    const { tanggal, pelanggan_id, jenis_nota_id, berat_kg, items, isFlat, nota_id, id, action } = payload
 
     // Get the name of the jenis_nota
     let jenis = 'KILOAN'
@@ -59,22 +59,44 @@ serve(async (req) => {
       total = items.reduce((sum: number, item: any) => sum + ((Number(item.qty) || 0) * (Number(item.harga) || 0)), 0)
     }
 
-    // Insert nota
-    const { data: nota, error: notaErr } = await supabaseClient
-      .from('nota')
-      .insert([{
-        nota_id,
-        tanggal,
-        pelanggan_id,
-        jenis_nota_id,
-        jenis,
-        berat_kg: isKiloan ? berat_kg : null,
-        status_bayar: 'Belum',
-        total,
-        items: (!isKiloan && items && items.length > 0) ? items : null
-      }])
-      .select()
-      .single()
+    let nota, notaErr;
+
+    if (action === 'update' && id) {
+      const { data, error } = await supabaseClient
+        .from('nota')
+        .update({
+          tanggal,
+          pelanggan_id,
+          jenis_nota_id,
+          jenis,
+          berat_kg: isKiloan ? berat_kg : null,
+          total,
+          items: (!isKiloan && items && items.length > 0) ? items : null
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      nota = data;
+      notaErr = error;
+    } else {
+      const { data, error } = await supabaseClient
+        .from('nota')
+        .insert([{
+          nota_id,
+          tanggal,
+          pelanggan_id,
+          jenis_nota_id,
+          jenis,
+          berat_kg: isKiloan ? berat_kg : null,
+          status_bayar: 'Belum',
+          total,
+          items: (!isKiloan && items && items.length > 0) ? items : null
+        }])
+        .select()
+        .single();
+      nota = data;
+      notaErr = error;
+    }
 
     if (notaErr) throw notaErr
 

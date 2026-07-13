@@ -275,10 +275,9 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
 
       if (editNotaId) {
         // Prevent changing status_bayar if it's already Lunas
-        const { error: notaErr } = await supabase
-          .from('nota')
-          .update(notaData)
-          .eq('id', editNotaId);
+        const { error: notaErr } = await supabase.functions.invoke("nota-create", {
+          body: { ...notaData, id: editNotaId, action: 'update', isFlat }
+        });
         if (notaErr) throw notaErr;
         queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });
         toast('Nota berhasil diperbarui!', 'success');
