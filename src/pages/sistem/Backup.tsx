@@ -24,12 +24,10 @@ export default function Backup() {
 
   const fetchStatus = async () => {
     try {
-      const { data: notaData } = await supabase.from('nota').select('tanggal');
-      const months = new Set<string>();
-      notaData?.forEach(n => {
-        if (n.tanggal) months.add(n.tanggal.substring(0, 7));
-      });
-      setNotaMonths(Array.from(months).sort().reverse());
+      const { data: notaData, error } = await supabase.rpc('get_unique_nota_months');
+      if (!error && notaData) {
+        setNotaMonths(notaData.map((row: any) => row.bulan));
+      }
 
       const { data: backupData } = await supabase.from('backup_history').select('bulan');
       setBackedUpMonths(backupData?.map(b => b.bulan) || []);
