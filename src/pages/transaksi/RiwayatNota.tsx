@@ -15,7 +15,14 @@ export default function RiwayatNota() {
   
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterBulan, setFilterBulan] = useState('');
+  
+  const getCurrentMonthString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    return `${year}-${month}`;
+  };
+  const [filterBulan, setFilterBulan] = useState(getCurrentMonthString());
   const [filterPelanggan, setFilterPelanggan] = useState('');
   
   const [pelangganList, setPelangganList] = useState<any[]>([]);
@@ -47,7 +54,8 @@ export default function RiwayatNota() {
         pelanggan (id, nama, tipe_billing, tipe, tarif_rs, tarif_flat),
         jenis_nota (id, nama)
       `)
-      .order('tanggal', { ascending: true });
+      .order('tanggal', { ascending: true })
+      .limit(500);
 
     if (filterPelanggan) {
       query = query.eq('pelanggan_id', filterPelanggan);
@@ -149,6 +157,13 @@ export default function RiwayatNota() {
             />
           </div>
         </div>
+
+        {filterBulan && (
+          <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 text-sm text-blue-700 flex items-center gap-2">
+            <span className="font-medium">Filter bulan aktif:</span> 
+            Menampilkan data untuk bulan {filterBulan}. Kosongkan filter bulan jika ingin melihat seluruh riwayat (maksimal 500 transaksi terbaru).
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
