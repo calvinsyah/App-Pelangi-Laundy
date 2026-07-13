@@ -53,7 +53,7 @@ export const ConfirmProvider: React.FC<{ children: ReactNode }> = ({ children })
               }
             `}</style>
             <h3 className="text-lg font-bold text-gray-900 mb-2">Konfirmasi</h3>
-            <p className="text-gray-600 mb-6">{message}</p>
+            <p className="text-gray-600 mb-6 whitespace-pre-wrap">{message}</p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={handleCancel}

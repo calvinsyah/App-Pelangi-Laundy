@@ -85,13 +85,13 @@ export default function Backup() {
         const json = JSON.parse(event.target?.result as string);
         let syncCount = 0;
 
+        const payloads: { table: string, rows: any[] }[] = [];
+
         // FORMAT 1: exportAllData → key = nama tabel Supabase (New Format)
         if (!json.data && (json.nota || json.pelanggan || json.biaya)) {
           for (const [table, rows] of Object.entries(json)) {
             if (!Array.isArray(rows) || (rows as any[]).length === 0) continue;
-            const { error } = await supabase.from(table).upsert(rows);
-            if (error) console.error(`Failed to import table ${table}:`, error);
-            else syncCount += (rows as any[]).length;
+            payloads.push({ table, rows });
           }
         }
         // FORMAT 2: backupBulan → key = DB_XXX → perlu transform ke Supabase format (Legacy Format)
@@ -130,7 +130,6 @@ export default function Backup() {
               if (Array.isArray(rows)) {
                 supabaseRows = rows;
               } else if (typeof rows === 'object' && rows !== null) {
-                // Object nested → array of rows
                 Object.entries(rows).forEach(([pid, map]: [string, any]) => {
                   Object.entries(map).forEach(([lid, harga]) => {
                     supabaseRows.push({ pelanggan_id: parseInt(pid), linen_id: parseInt(lid), harga });
@@ -142,11 +141,29 @@ export default function Backup() {
             }
 
             if (supabaseRows.length > 0) {
-              const { error } = await supabase.from(table).upsert(supabaseRows);
-              if (error) console.error(`Failed to import legacy table ${table}:`, error);
-              else syncCount += supabaseRows.length;
+              payloads.push({ table, rows: supabaseRows });
             }
           }
+        }
+
+        if (payloads.length === 0) {
+          toast('File backup tidak valid atau kosong.', 'error');
+          setLoading(false);
+          return;
+        }
+
+        const ringkasan = payloads.map(p => `- ${p.table}: ${p.rows.length} baris`).join('\n');
+        const ok = await confirm(`File ini berisi:\n${ringkasan}\n\nData dengan ID yang sama akan ditimpa. Lanjutkan proses impor?`);
+        
+        if (!ok) {
+          setLoading(false);
+          return;
+        }
+
+        for (const p of payloads) {
+          const { error } = await supabase.from(p.table).upsert(p.rows);
+          if (error) console.error(`Failed to import table ${p.table}:`, error);
+          else syncCount += p.rows.length;
         }
 
         toast(`Impor selesai! Berhasil menyinkronkan ${syncCount} baris.`, 'success');
