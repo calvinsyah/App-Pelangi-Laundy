@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { generateKopHTML, openPrintWindow, buildLinenRoomHTML, buildInvoicePelangganHTML } from '../../lib/printUtils';
 import { fmtRp, toRoman } from '../../lib/utils';
 import { generateDocumentNumber } from '../../lib/invoiceUtils';
+import { useToast } from '../../components/ToastProvider';
 
 interface Pelanggan {
   id: number;
@@ -33,6 +34,7 @@ const calculateTotal = (nota: any, pel: any) => {
 };
 
 export default function Tagihan() {
+  const { toast } = useToast();
   const [pelangganList, setPelangganList] = useState<Pelanggan[]>([]);
   const [loading, setLoading] = useState(false);
   const queryClient = useQueryClient();
@@ -204,35 +206,40 @@ export default function Tagihan() {
     const pelData = { ...rawPelData, ...(snapshotData || {}) };
     
     setLoading(true);
-    const { data: kopData } = await supabase.from('kop').select('*').single();
-    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
-    const html = await buildLinenRoomHTML(pelData, selectedBulan, filteredInvoiceData, kopHTML, selectedJenisNota);
-    
-    // Extract the table from HTML to put into Excel
-    // We can do this easily by wrapping it
-    const excelHTML = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="UTF-8">
-        <style>
-          table { border-collapse: collapse; }
-          th { background: #1e3a5f; color: white; padding: 5px; border: 1px solid #999; }
-          td { padding: 4px; border: 1px solid #ccc; }
-        </style>
-      </head>
-      <body>
-        <h2>Linen Room - ${pelData.nama} - ${selectedBulan} ${selectedJenisNota ? `(${selectedJenisNota})` : ''}</h2>
-        ${html.match(/<table[\s\S]*?<\/table>/)?.[0] || '<table><tr><td>Gagal mengambil tabel</td></tr></table>'}
-      </body>
-      </html>
-    `;
+    try {
+      const { data: kopData } = await supabase.from('kop').select('*').maybeSingle();
+      const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
+      const html = await buildLinenRoomHTML(pelData, selectedBulan, filteredInvoiceData, kopHTML, selectedJenisNota);
+      
+      // Extract the table from HTML to put into Excel
+      // We can do this easily by wrapping it
+      const excelHTML = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            table { border-collapse: collapse; }
+            th { background: #1e3a5f; color: white; padding: 5px; border: 1px solid #999; }
+            td { padding: 4px; border: 1px solid #ccc; }
+          </style>
+        </head>
+        <body>
+          <h2>Linen Room - ${pelData.nama} - ${selectedBulan} ${selectedJenisNota ? `(${selectedJenisNota})` : ''}</h2>
+          ${html.match(/<table[\s\S]*?<\/table>/)?.[0] || '<table><tr><td>Gagal mengambil tabel</td></tr></table>'}
+        </body>
+        </html>
+      `;
 
-    const blob = new Blob([excelHTML], { type: "application/vnd.ms-excel" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `LinenRoom_${pelData.nama.replace(/\s/g, "_")}_${selectedBulan}.xls`;
-    a.click();
-    setLoading(false);
+      const blob = new Blob([excelHTML], { type: "application/vnd.ms-excel" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `LinenRoom_${pelData.nama.replace(/\s/g, "_")}_${selectedBulan}.xls`;
+      a.click();
+    } catch (err: any) {
+      toast(err.message || 'Gagal mengunduh Excel');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCetakLinenRoom = async () => {
@@ -240,11 +247,16 @@ export default function Tagihan() {
     if (!rawPelData || filteredInvoiceData.length === 0) return;
     const pelData = { ...rawPelData, ...(snapshotData || {}) };
     setLoading(true);
-    const { data: kopData } = await supabase.from('kop').select('*').single();
-    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
-    const html = await buildLinenRoomHTML(pelData, selectedBulan, filteredInvoiceData, kopHTML, selectedJenisNota);
-    openPrintWindow(html, `Linen Room - ${pelData.nama}`);
-    setLoading(false);
+    try {
+      const { data: kopData } = await supabase.from('kop').select('*').maybeSingle();
+      const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
+      const html = await buildLinenRoomHTML(pelData, selectedBulan, filteredInvoiceData, kopHTML, selectedJenisNota);
+      openPrintWindow(html, `Linen Room - ${pelData.nama}`);
+    } catch (err: any) {
+      toast(err.message || 'Gagal mencetak Linen Room');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCetakInvoice = async () => {
@@ -252,11 +264,16 @@ export default function Tagihan() {
     if (!rawPelData || invoiceData.length === 0) return;
     const pelData = { ...rawPelData, ...(snapshotData || {}) };
     setLoading(true);
-    const { data: kopData } = await supabase.from('kop').select('*').single();
-    const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
-    const html = await buildInvoicePelangganHTML(pelData, selectedBulan, invoiceData, kopHTML, invoiceNumber);
-    openPrintWindow(html, `Invoice - ${pelData.nama}`);
-    setLoading(false);
+    try {
+      const { data: kopData } = await supabase.from('kop').select('*').maybeSingle();
+      const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
+      const html = await buildInvoicePelangganHTML(pelData, selectedBulan, invoiceData, kopHTML, invoiceNumber);
+      openPrintWindow(html, `Invoice - ${pelData.nama}`);
+    } catch (err: any) {
+      toast(err.message || 'Gagal mencetak Invoice');
+    } finally {
+      setLoading(false);
+    }
   };
 
 
