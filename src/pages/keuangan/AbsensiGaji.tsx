@@ -4,6 +4,7 @@ import { Save, Calendar, DollarSign, Edit, Printer, Download } from 'lucide-reac
 import { generateKopHTML, buildSlipGajiHTML, buildSlipGajiTetapHTML, openPrintWindow, downloadHTML } from '../../lib/printUtils';
 import { CurrencyInput } from '../../components/CurrencyInput';
 import { getLocalDateString } from '../../lib/utils';
+import { useToast } from '../../components/ToastProvider';
 
 interface Karyawan {
   id: number;
@@ -41,6 +42,7 @@ export default function AbsensiGaji() {
     lembur: 0,
     potongan: 0
   });
+  const { toast } = useToast();
 
   useEffect(() => {
     async function init() {
@@ -269,13 +271,27 @@ export default function AbsensiGaji() {
   };
 
   const handleCetakSlip = async (h: any) => {
-    const kopHTML = await getKop();
+    let kopHTML = '';
+    try {
+      kopHTML = await getKop();
+    } catch (err: any) {
+      console.error(err);
+      toast('Gagal memuat konfigurasi Kop Surat: ' + (err?.message || 'Unknown error'), 'error');
+      return;
+    }
     const html = h.karyawan.tipe_gaji === 'Tetap' ? buildSlipGajiTetapHTML(h, kopHTML) : buildSlipGajiHTML(h, kopHTML);
     openPrintWindow(html, `Slip Gaji - ${h.karyawan.nama}`);
   };
 
   const handleDownloadSlip = async (h: any) => {
-    const kopHTML = await getKop();
+    let kopHTML = '';
+    try {
+      kopHTML = await getKop();
+    } catch (err: any) {
+      console.error(err);
+      toast('Gagal memuat konfigurasi Kop Surat: ' + (err?.message || 'Unknown error'), 'error');
+      return;
+    }
     const html = h.karyawan.tipe_gaji === 'Tetap' ? buildSlipGajiTetapHTML(h, kopHTML) : buildSlipGajiHTML(h, kopHTML);
     downloadHTML(html, `Slip_Gaji_${h.karyawan.nama.replace(/\s/g, '_')}_${h.periodeMulai}_${h.periodeSelesai}.html`);
   };

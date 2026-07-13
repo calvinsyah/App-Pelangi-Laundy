@@ -3,10 +3,12 @@ import { supabase } from '../../lib/supabaseClient';
 import { fmtRp } from '../../lib/utils';
 import { generateKopHTML, openPrintWindow } from '../../lib/printUtils';
 import { useDashboardMetrics } from '../../lib/queries';
+import { useToast } from '../../components/ToastProvider';
 
 export default function Laporan() {
   const [periode, setPeriode] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
   const { data: metricsData, isLoading, isError, error } = useDashboardMetrics(periode);
+  const { toast } = useToast();
 
   const data = {
     penjualan: metricsData?.omset || 0,
@@ -27,7 +29,14 @@ export default function Laporan() {
   };
 
   const handlePrint = async () => {
-    const kopHTML = await getKop();
+    let kopHTML = '';
+    try {
+      kopHTML = await getKop();
+    } catch (err: any) {
+      console.error(err);
+      toast('Gagal memuat konfigurasi Kop Surat: ' + (err?.message || 'Unknown error'), 'error');
+      return;
+    }
     const namaBulan = new Date(periode + "-02").toLocaleDateString("id-ID", { month: "long", year: "numeric" }).toUpperCase();
 
     const html = `
