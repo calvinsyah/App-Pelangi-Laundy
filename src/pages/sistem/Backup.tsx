@@ -199,13 +199,25 @@ export default function Backup() {
     
     try {
       const purgeDateLimit = `${purgeMonth}-01`;
+      const errors: string[] = [];
       
-      await supabase.from('nota').delete().lt('tanggal', purgeDateLimit);
-      await supabase.from('biaya').delete().lt('tanggal', purgeDateLimit);
-      await supabase.from('gaji').delete().lt('periode_mulai', purgeDateLimit);
-      await supabase.from('absensi').delete().lt('tanggal', purgeDateLimit);
+      const { error: errNota } = await supabase.from('nota').delete().lt('tanggal', purgeDateLimit);
+      if (errNota) errors.push(`Nota: ${errNota.message}`);
+
+      const { error: errBiaya } = await supabase.from('biaya').delete().lt('tanggal', purgeDateLimit);
+      if (errBiaya) errors.push(`Biaya: ${errBiaya.message}`);
+
+      const { error: errGaji } = await supabase.from('gaji').delete().lt('periode_mulai', purgeDateLimit);
+      if (errGaji) errors.push(`Gaji: ${errGaji.message}`);
+
+      const { error: errAbsensi } = await supabase.from('absensi').delete().lt('tanggal', purgeDateLimit);
+      if (errAbsensi) errors.push(`Absensi: ${errAbsensi.message}`);
       
-      toast(`Data transaksi sebelum ${purgeMonth} berhasil dibersihkan.`, 'success');
+      if (errors.length > 0) {
+        toast(`Gagal membersihkan tabel: ${errors.join(', ')}`, 'error');
+      } else {
+        toast(`Data transaksi sebelum ${purgeMonth} berhasil dibersihkan.`, 'success');
+      }
       fetchStatus();
       setPurgeMonth('');
     } catch (e) {
@@ -225,11 +237,25 @@ export default function Backup() {
     setLoading(true);
     toast('Membersihkan data...', 'info');
     try {
-      await supabase.from('nota').delete().neq('id', 0);
-      await supabase.from('biaya').delete().neq('id', 0);
-      await supabase.from('gaji').delete().neq('id', 0);
-      await supabase.from('absensi').delete().neq('id', 0);
-      toast('Data transaksi berhasil dibersihkan.', 'success');
+      const errors: string[] = [];
+
+      const { error: errNota } = await supabase.from('nota').delete().neq('id', 0);
+      if (errNota) errors.push(`Nota: ${errNota.message}`);
+
+      const { error: errBiaya } = await supabase.from('biaya').delete().neq('id', 0);
+      if (errBiaya) errors.push(`Biaya: ${errBiaya.message}`);
+
+      const { error: errGaji } = await supabase.from('gaji').delete().neq('id', 0);
+      if (errGaji) errors.push(`Gaji: ${errGaji.message}`);
+
+      const { error: errAbsensi } = await supabase.from('absensi').delete().neq('id', 0);
+      if (errAbsensi) errors.push(`Absensi: ${errAbsensi.message}`);
+
+      if (errors.length > 0) {
+        toast(`Gagal membersihkan tabel: ${errors.join(', ')}`, 'error');
+      } else {
+        toast('Data transaksi berhasil dibersihkan.', 'success');
+      }
     } catch (e) {
       toast('Gagal membersihkan data.', 'error');
     }
