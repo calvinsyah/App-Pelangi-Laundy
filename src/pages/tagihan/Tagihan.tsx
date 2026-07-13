@@ -176,7 +176,9 @@ export default function Tagihan() {
       is_locked: newLock,
       snapshot_data: newSnapshot 
     });
-    if (!error) {
+    if (error) {
+      toast(error.message || 'Gagal mengubah status kunci invoice');
+    } else {
       setIsLocked(newLock);
       setSnapshotData(newSnapshot);
     }
@@ -194,7 +196,9 @@ export default function Tagihan() {
       bulan: selectedBulan,
       is_paid: newPaid 
     });
-    if (!error) {
+    if (error) {
+      toast(error.message || 'Gagal mengubah status pelunasan invoice');
+    } else {
       setIsPaid(newPaid);
       queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });
     }
