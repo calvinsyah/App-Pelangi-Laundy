@@ -4,6 +4,7 @@ import { Printer, Download } from 'lucide-react';
 import { openPrintWindow, downloadHTML, generateKopHTML } from '../../lib/printUtils';
 import { toRoman, terbilang } from '../../lib/utils';
 import { generateDocumentNumber } from '../../lib/invoiceUtils';
+import { useToast } from '../../components/ToastProvider';
 
 interface Pelanggan {
   id: number;
@@ -18,6 +19,7 @@ interface Pelanggan {
 }
 
 export default function Kuitansi() {
+  const { toast } = useToast();
   const [pelangganList, setPelangganList] = useState<Pelanggan[]>([]);
   const [selectedPelanggan, setSelectedPelanggan] = useState('');
   const [selectedBulan, setSelectedBulan] = useState(new Date().toISOString().substring(0, 7));
@@ -206,7 +208,7 @@ export default function Kuitansi() {
   };
 
   const handlePrint = async () => {
-    if (!selectedPelanggan || !selectedBulan) return alert("Pilih pelanggan dan bulan!");
+    if (!selectedPelanggan || !selectedBulan) return toast("Pilih pelanggan dan bulan!");
     setLoading(true);
     try {
       const html = await buildKuitansiHTML(selectedPelanggan, selectedBulan);
@@ -217,7 +219,7 @@ export default function Kuitansi() {
   };
 
   const handleDownload = async () => {
-    if (!selectedPelanggan || !selectedBulan) return alert("Pilih pelanggan dan bulan!");
+    if (!selectedPelanggan || !selectedBulan) return toast("Pilih pelanggan dan bulan!");
     setLoading(true);
     try {
       const html = await buildKuitansiHTML(selectedPelanggan, selectedBulan);
