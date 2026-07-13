@@ -2,19 +2,27 @@ import { supabase } from './supabaseClient';
 import { toRoman } from './utils';
 
 /**
- * Generate dan cache nomor invoice agar stabil
- * Format: XXX/PL-KODE/BULAN_ROMAWI/TAHUN
+ * Helper terpusat untuk men-generate nomor dokumen (Invoice atau Kwitansi).
+ * Menggunakan RPC 'generate_document_number' untuk menjamin increment yang atomik.
+ *
+ * @param tipeDoc 'INV' untuk Invoice, 'KWT' untuk Kwitansi
+ * @param kodeInvoice Kode unik pelanggan (mis: 'HG', 'RS')
+ * @param bln Periode dalam format 'YYYY-MM'
+ * @returns Nomor dokumen utuh, misal: '001/PL-INV-HG/VI/2026'
  */
-export const getInvoiceStableNumber = async (
-  kode: string,
+export const generateDocumentNumber = async (
+  tipeDoc: 'INV' | 'KWT',
+  kodeInvoice: string,
   bln: string
 ): Promise<string> => {
-  if (!kode || !bln) return "";
+  if (!kodeInvoice || !bln) return "";
   const [tahunStr, bulanStr] = bln.split("-");
   const tahun = parseInt(tahunStr, 10);
   const bulanNum = parseInt(bulanStr, 10);
-  const cacheKey = `${kode}_${bln}`;
-  const counterKey = `${kode}_${tahun}`;
+  
+  // Cache key include tipeDoc to separate Invoice and Kwitansi
+  const cacheKey = `${tipeDoc}_${kodeInvoice}_${bln}`;
+  const counterKey = `${tipeDoc}_${kodeInvoice}_${tahun}`;
 
   try {
     // 1. Cek cache di tabel invoice_numbers
@@ -26,25 +34,24 @@ export const getInvoiceStableNumber = async (
 
     if (cached && cached.nomor) return cached.nomor;
 
-    // 2. Jika belum ada, ambil counter terbaru
-    const { data: counterData } = await supabase
-      .from('invoice_counter')
-      .select('nilai')
-      .eq('counter_key', counterKey)
-      .maybeSingle();
+    // 2. Jika belum ada, ambil counter terbaru secara atomik
+    const { data: currentCounter, error } = await supabase
+      .rpc('generate_document_number', { p_counter_key: counterKey });
 
-    const currentCounter = (counterData?.nilai || 0) + 1;
+    if (error || currentCounter === null) {
+      console.error(`Error generating document number for ${tipeDoc}:`, error);
+      return `ERR/${tipeDoc}-${kodeInvoice}/${toRoman(bulanNum)}/${tahun}`;
+    }
     
     // 3. Format nomor baru
-    const nomor = `${String(currentCounter).padStart(3, "0")}/PL-${kode}/${toRoman(bulanNum)}/${tahun}`;
+    const nomor = `${String(currentCounter).padStart(3, "0")}/PL-${tipeDoc}-${kodeInvoice}/${toRoman(bulanNum)}/${tahun}`;
 
     // 4. Simpan ke database
     await supabase.from('invoice_numbers').upsert({ cache_key: cacheKey, nomor });
-    await supabase.from('invoice_counter').upsert({ counter_key: counterKey, nilai: currentCounter });
 
     return nomor;
   } catch (err) {
-    console.error("Gagal getInvoiceStableNumber:", err);
+    console.error("Gagal generateDocumentNumber:", err);
     return "";
   }
 };

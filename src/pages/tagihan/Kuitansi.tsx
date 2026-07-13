@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { Printer, Download } from 'lucide-react';
 import { openPrintWindow, downloadHTML, generateKopHTML } from '../../lib/printUtils';
 import { toRoman, terbilang } from '../../lib/utils';
+import { generateDocumentNumber } from '../../lib/invoiceUtils';
 
 interface Pelanggan {
   id: number;
@@ -40,24 +41,7 @@ export default function Kuitansi() {
     fetchPelanggan();
   }, []);
 
-  const generateNomorKuitansi = async (pel: Pelanggan, bln: string) => {
-    const [tahun, bulanStr] = bln.split("-");
-    const bulanNum = parseInt(bulanStr, 10);
-    const key = `${pel.kode_invoice}_${bln}`;
-    const counterKey = `${pel.kode_invoice}_${tahun}`;
 
-    const { data: cached } = await supabase.from('invoice_numbers').select('nomor').eq('cache_key', key).maybeSingle();
-    if (cached) return cached.nomor;
-
-    const { data: counterData } = await supabase.from('invoice_counter').select('nilai').eq('counter_key', counterKey).maybeSingle();
-    const currentCounter = (counterData?.nilai || 0) + 1;
-    const formattedNo = `${String(currentCounter).padStart(3, "0")}/PL-${pel.kode_invoice}/${toRoman(bulanNum)}/${tahun}`;
-    
-    await supabase.from('invoice_numbers').upsert({ cache_key: key, nomor: formattedNo });
-    await supabase.from('invoice_counter').upsert({ counter_key: counterKey, nilai: currentCounter });
-    
-    return formattedNo;
-  };
 
   const buildKuitansiHTML = async (pelNama: string, bln: string) => {
     const pData = pelangganList.find(p => p.nama === pelNama);
@@ -125,7 +109,7 @@ export default function Kuitansi() {
     }
     totalTagihan = Math.floor(totalTagihan);
 
-    const nomorKwitansi = await generateNomorKuitansi(pData, bln);
+    const nomorKwitansi = await generateDocumentNumber('KWT', pData.kode_invoice, bln);
     const [tahunStr, bulanStr] = bln.split("-");
     const bulanNum = parseInt(bulanStr, 10);
     const namaBulan = new Date(parseInt(tahunStr, 10), bulanNum - 1, 1).toLocaleDateString("id-ID", { month: "long" });

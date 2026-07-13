@@ -4,6 +4,7 @@ import { Lock, Unlock, Check, X, FileText, Printer, Download } from 'lucide-reac
 import { useQueryClient } from '@tanstack/react-query';
 import { generateKopHTML, openPrintWindow, buildLinenRoomHTML, buildInvoicePelangganHTML } from '../../lib/printUtils';
 import { fmtRp, toRoman } from '../../lib/utils';
+import { generateDocumentNumber } from '../../lib/invoiceUtils';
 
 interface Pelanggan {
   id: number;
@@ -85,39 +86,6 @@ export default function Tagihan() {
     return roman[num] || "";
   };
 
-  const getInvoiceNumber = async (pel: Pelanggan, bln: string) => {
-    const [tahun, bulanStr] = bln.split("-");
-    const bulanNum = parseInt(bulanStr, 10);
-    const key = `${pel.kode_invoice}_${bln}`;
-    const counterKey = `${pel.kode_invoice}_${tahun}`;
-
-    // Get existing cache
-    const { data: cached } = await supabase
-      .from('invoice_numbers')
-      .select('nomor')
-      .eq('cache_key', key)
-      .maybeSingle();
-
-    if (cached) return cached.nomor;
-
-    // Get counter
-    const { data: counterData } = await supabase
-      .from('invoice_counter')
-      .select('nilai')
-      .eq('counter_key', counterKey)
-      .maybeSingle();
-
-    const currentCounter = (counterData?.nilai || 0) + 1;
-
-    const formattedNo = `${String(currentCounter).padStart(3, "0")}/PL-${pel.kode_invoice}/${toRoman(bulanNum)}/${tahun}`;
-
-    // Save back
-    await supabase.from('invoice_numbers').upsert({ cache_key: key, nomor: formattedNo });
-    await supabase.from('invoice_counter').upsert({ counter_key: counterKey, nilai: currentCounter });
-
-    return formattedNo;
-  };
-
   const fetchInvoice = async () => {
     if (!selectedPelanggan || !selectedBulan) return;
     setLoading(true);
@@ -158,7 +126,7 @@ export default function Tagihan() {
 
       setInvoiceData(notas || []);
 
-      const noInv = await getInvoiceNumber(pel, selectedBulan);
+      const noInv = await generateDocumentNumber('INV', pel.kode_invoice, selectedBulan);
       setInvoiceNumber(noInv);
 
     } catch (err) {
