@@ -14,18 +14,23 @@ interface Biaya {
   lunas: boolean;
 }
 
-const CATEGORIES = [
-  "GAS", "AIR", "LISTRIK 1", "LISTRIK 2", "CHEMICAL", "BBM", "PLASTIK", 
-  "PPH PS 23", "GAJI BORONGAN", "GAJI TETAP", "MAKAN", 
-  "PERAWATAN MESIN", "IURAN SAMPAH", "IURAN RT", "LAIN-LAIN"
+const HPP_CATEGORIES = [
+  "GAS", "AIR", "LISTRIK 1", "LISTRIK 2", "CHEMICAL", "BBM", "PLASTIK",
+  "PPH PS 23", "GAJI BORONGAN"
 ];
+
+const ADM_CATEGORIES = [
+  "GAJI TETAP", "MAKAN", "PERAWATAN MESIN", "IURAN SAMPAH", "IURAN RT", "LAIN-LAIN"
+];
+
+const CATEGORIES = [...HPP_CATEGORIES, ...ADM_CATEGORIES];
 
 export default function Pengeluaran() {
   const [biayas, setBiayas] = useState<Biaya[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterKat, setFilterKat] = useState('');
-  
+
   // Tanggal 1 bulan ini
   const getFirstDayOfMonthString = () => {
     const d = new Date();
@@ -38,7 +43,7 @@ export default function Pengeluaran() {
 
   const { confirm } = useConfirm();
   const { toast } = useToast();
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
@@ -52,7 +57,7 @@ export default function Pengeluaran() {
   const fetchBiayas = async () => {
     setLoading(true);
     let query = supabase.from('biaya').select('*').order('tanggal', { ascending: false });
-    
+
     if (filterMulai) query = query.gte('tanggal', filterMulai);
     if (filterSelesai) query = query.lte('tanggal', filterSelesai);
     if (filterKat) query = query.eq('kategori', filterKat);
@@ -130,7 +135,7 @@ export default function Pengeluaran() {
     }
   };
 
-  const filteredBiayas = biayas.filter(b => 
+  const filteredBiayas = biayas.filter(b =>
     b.kategori.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -176,7 +181,7 @@ export default function Pengeluaran() {
               className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          
+
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input
@@ -194,9 +199,16 @@ export default function Pengeluaran() {
               className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               <option value="">Semua Kategori</option>
-              {CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
+              <optgroup label="HPP (Harga Pokok Penjualan)">
+                {HPP_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Administrasi & Umum">
+                {ADM_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
         </div>
@@ -224,9 +236,8 @@ export default function Pengeluaran() {
                     <td className="p-4 text-gray-800 font-medium">{b.kategori}</td>
                     <td className="p-4 text-gray-800">{fmtRp(b.nominal)}</td>
                     <td className="p-4">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        b.lunas ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${b.lunas ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
                         {b.lunas ? 'Lunas' : 'Belum Lunas'}
                       </span>
                     </td>
@@ -281,7 +292,7 @@ export default function Pengeluaran() {
                 <input
                   type="date"
                   value={formData.tanggal}
-                  onChange={(e) => setFormData({...formData, tanggal: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -290,12 +301,19 @@ export default function Pengeluaran() {
                 <label className="block text-gray-700 text-sm font-bold mb-2">Kategori</label>
                 <select
                   value={formData.kategori}
-                  onChange={(e) => setFormData({...formData, kategori: e.target.value})}
+                  onChange={(e) => setFormData({ ...formData, kategori: e.target.value })}
                   className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
+                  <optgroup label="HPP (Harga Pokok Penjualan)">
+                    {HPP_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Administrasi & Umum">
+                    {ADM_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
               {formData.kategori === 'LAIN-LAIN' && (
@@ -304,7 +322,7 @@ export default function Pengeluaran() {
                   <input
                     type="text"
                     value={formData.kategoriCustom}
-                    onChange={(e) => setFormData({...formData, kategoriCustom: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, kategoriCustom: e.target.value })}
                     className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required={formData.kategori === 'LAIN-LAIN'}
                   />
@@ -314,7 +332,7 @@ export default function Pengeluaran() {
                 <label className="block text-gray-700 text-sm font-bold mb-2">Nominal</label>
                 <CurrencyInput
                   value={formData.nominal}
-                  onChange={(val) => setFormData({...formData, nominal: val})}
+                  onChange={(val) => setFormData({ ...formData, nominal: val })}
                   className="shadow appearance-none border rounded w-full py-2 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -324,7 +342,7 @@ export default function Pengeluaran() {
                   type="checkbox"
                   id="lunasCheck"
                   checked={formData.lunas}
-                  onChange={(e) => setFormData({...formData, lunas: e.target.checked})}
+                  onChange={(e) => setFormData({ ...formData, lunas: e.target.checked })}
                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
                 />
                 <label htmlFor="lunasCheck" className="text-gray-700 font-bold cursor-pointer select-none">
