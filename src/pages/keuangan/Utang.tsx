@@ -119,12 +119,20 @@ export default function Utang() {
 
   const handleDariChange = (val: string) => {
     const newSisa = calculateSisaBulan(val, formData.sampai);
-    setFormData(prev => ({ ...prev, dari: val, sisa_bulan: newSisa > 0 ? newSisa : 0 }));
+    if (!editId) {
+      setFormData(prev => ({ ...prev, dari: val, sisa_bulan: newSisa > 0 ? newSisa : 0 }));
+    } else {
+      setFormData(prev => ({ ...prev, dari: val }));
+    }
   };
 
   const handleSampaiChange = (val: string) => {
     const newSisa = calculateSisaBulan(formData.dari, val);
-    setFormData(prev => ({ ...prev, sampai: val, sisa_bulan: newSisa > 0 ? newSisa : 0 }));
+    if (!editId) {
+      setFormData(prev => ({ ...prev, sampai: val, sisa_bulan: newSisa > 0 ? newSisa : 0 }));
+    } else {
+      setFormData(prev => ({ ...prev, sampai: val }));
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -166,6 +174,8 @@ export default function Utang() {
     u.nama.toLowerCase().includes(search.toLowerCase()) ||
     (u.keterangan || '').toLowerCase().includes(search.toLowerCase())
   );
+
+  const calculatedSisa = formData.dari && formData.sampai ? calculateSisaBulan(formData.dari, formData.sampai) : 0;
 
   return (
     <div>
@@ -341,6 +351,12 @@ export default function Utang() {
                   required
                   readOnly={!editId} // Hanya readonly kalau tambah baru, biar otomatis
                 />
+                {editId && calculatedSisa > 0 && calculatedSisa !== formData.sisa_bulan && (
+                  <div className="mt-1 flex items-center justify-between">
+                    <span className="text-xs text-blue-600">Saran: {calculatedSisa} bulan berdasarkan tanggal baru</span>
+                    <button type="button" onClick={() => setFormData({...formData, sisa_bulan: calculatedSisa})} className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">Terapkan</button>
+                  </div>
+                )}
               </div>
               <div className="mb-4">
                 <label className="block text-gray-700 text-sm font-bold mb-2">Keterangan</label>
