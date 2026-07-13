@@ -179,9 +179,9 @@ export default function RiwayatNota() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="p-4 text-center text-gray-500">Loading...</td></tr>
+                <tr><td colSpan={6} className="p-4 text-center text-gray-500">Loading...</td></tr>
               ) : filteredNota.length === 0 ? (
-                <tr><td colSpan={7} className="p-4 text-center text-gray-500">Tidak ada data nota.</td></tr>
+                <tr><td colSpan={6} className="p-4 text-center text-gray-500">Tidak ada data nota.</td></tr>
               ) : (
                 filteredNota.map((n) => {
                   const isItem = n.pelanggan?.tipe?.toUpperCase() !== 'RS';
