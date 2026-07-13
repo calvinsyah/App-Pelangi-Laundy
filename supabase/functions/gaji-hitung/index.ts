@@ -63,17 +63,21 @@ serve(async (req) => {
       { data: absensiList, error: aErr },
       { data: pengaturanData, error: pErr },
       { data: pelangganList, error: pelErr },
-      { data: dataGaji, error: gErr }
+      { data: dataGaji, error: gErr },
+      { data: jenisNotaList, error: jnErr },
+      { data: gajiConfig, error: gcErr }
     ] = await Promise.all([
       supabaseClient.from('karyawan').select('*'),
       supabaseClient.from('nota').select('*').gte('tanggal', tglMulai).lte('tanggal', tglSelesai),
       supabaseClient.from('absensi').select('*').gte('tanggal', tglMulai).lte('tanggal', tglSelesai),
       supabaseClient.from('pengaturan').select('*').limit(1),
       supabaseClient.from('pelanggan').select('*'),
-      supabaseClient.from('gaji').select('*').eq('periode_mulai', tglMulai).eq('periode_selesai', tglSelesai)
+      supabaseClient.from('gaji').select('*').eq('periode_mulai', tglMulai).eq('periode_selesai', tglSelesai),
+      supabaseClient.from('jenis_nota').select('*'),
+      supabaseClient.from('pelanggan_jenis_nota_config').select('*')
     ])
 
-    if (kErr || nErr || aErr || pErr || pelErr || gErr) {
+    if (kErr || nErr || aErr || pErr || pelErr || gErr || jnErr || gcErr) {
       throw new Error('Gagal memuat data dari database')
     }
 
@@ -94,11 +98,15 @@ serve(async (req) => {
       const pel = pelangganList?.find((p) => p.id === nota.pelanggan_id)
       if (!pel) return
 
-      const tipePel = pel.tipe?.toUpperCase()
-      const billingPel = pel.tipe_billing?.toUpperCase()
       const jenisNota = nota.jenis?.toUpperCase()
 
-      if (tipePel === "HOTEL" && billingPel === "FLAT" && jenisNota === "FLAT") return
+      // Cek konfigurasi per-pelanggan: apakah jenis nota ini masuk perhitungan gaji?
+      const jnId = jenisNotaList?.find((j: any) => j.nama?.toUpperCase() === jenisNota)?.id
+      const config = (gajiConfig as any[])?.find(
+        (c: any) => c.pelanggan_id === nota.pelanggan_id && c.jenis_nota_id === jnId
+      )
+      // Jika ada config eksplisit hitung_gaji = false → skip
+      if (config && config.hitung_gaji === false) return
 
       let kg = 0
       if (jenisNota === "KILOAN") {

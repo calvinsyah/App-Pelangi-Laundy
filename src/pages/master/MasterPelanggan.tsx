@@ -114,8 +114,9 @@ export default function MasterPelanggan() {
   const [linenConfig, setLinenConfig] = useState<LinenConfigItem[]>([]);
   const [savingLinen, setSavingLinen] = useState(false);
   const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<string>('harga_urutan'); // 'harga_urutan' or jenis_nota_id
+  const [activeTab, setActiveTab] = useState<string>('harga_urutan'); // 'harga_urutan' | 'gaji_config' | jenis_nota_id
   const [notaLinenConfig, setNotaLinenConfig] = useState<Record<number, number[]>>({}); // jenis_nota_id -> array of linen_ids
+  const [gajiConfig, setGajiConfig] = useState<Record<number, boolean>>({}); // jenis_nota_id -> hitung_gaji
 
 
   const sensors = useSensors(
@@ -247,6 +248,20 @@ export default function MasterPelanggan() {
       }
       setNotaLinenConfig(notaConfig);
     }
+
+    // Fetch pelanggan_jenis_nota_config untuk tab Konfigurasi Gaji
+    const { data: pjncData } = await supabase
+      .from('pelanggan_jenis_nota_config')
+      .select('*')
+      .eq('pelanggan_id', p.id);
+
+    if (pjncData) {
+      const gc: Record<number, boolean> = {};
+      pjncData.forEach((c: any) => { gc[c.jenis_nota_id] = c.hitung_gaji; });
+      setGajiConfig(gc);
+    } else {
+      setGajiConfig({});
+    }
   };
 
   const saveLinenConfig = async () => {
@@ -292,6 +307,19 @@ export default function MasterPelanggan() {
       if (pnlData.length > 0) {
         const { error: err3 } = await supabase.from('pelanggan_nota_linen').insert(pnlData);
         if (err3) throw new Error('Failed to insert pelanggan_nota_linen');
+      }
+
+      // Simpan konfigurasi gaji (hitung_gaji per jenis nota)
+      if (Object.keys(gajiConfig).length > 0) {
+        const gcData = Object.entries(gajiConfig).map(([jnIdStr, val]) => ({
+          pelanggan_id: activePelanggan.id,
+          jenis_nota_id: Number(jnIdStr),
+          hitung_gaji: val
+        }));
+        const { error: err4 } = await supabase
+          .from('pelanggan_jenis_nota_config')
+          .upsert(gcData, { onConflict: 'pelanggan_id,jenis_nota_id' });
+        if (err4) throw new Error('Failed to save gaji config');
       }
 
       if (err1 || err2) throw new Error('Failed to upsert');
@@ -572,6 +600,13 @@ export default function MasterPelanggan() {
                   </button>
                 ));
               })()}
+              {/* Tab Konfigurasi Gaji */}
+              <button
+                className={`px-4 py-2 font-medium whitespace-nowrap ${activeTab === 'gaji_config' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => setActiveTab('gaji_config')}
+              >
+                Konfigurasi Gaji
+              </button>
             </div>
 
             {activeTab === 'harga_urutan' ? (
@@ -589,6 +624,40 @@ export default function MasterPelanggan() {
                   </DndContext>
                 </div>
               </>
+            ) : activeTab === 'gaji_config' ? (
+              <div className="flex-1 overflow-y-auto min-h-0 h-[400px]">
+                <p className="text-sm text-gray-500 mb-4">
+                  Tentukan jenis nota mana yang dihitung ke upah/gaji karyawan.
+                  Nota yang tidak dicentang <strong>tidak</strong> akan menambah KG harian karyawan.
+                </p>
+                <div className="space-y-2">
+                  {jenisNotaList.map(jn => {
+                    // Default true jika belum ada config
+                    const val = jn.id in gajiConfig ? gajiConfig[jn.id] : true;
+                    return (
+                      <label
+                        key={jn.id}
+                        className="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <span className="text-sm font-medium text-gray-700">{jn.nama}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                            val ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
+                          }`}>
+                            {val ? 'Masuk Gaji' : 'Tidak Dihitung'}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={val}
+                            onChange={(e) => setGajiConfig(prev => ({ ...prev, [jn.id]: e.target.checked }))}
+                            className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                          />
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             ) : (
               <div className="flex-1 overflow-y-auto min-h-0 h-[400px] flex flex-col">
                 <p className="text-sm text-gray-500 mb-4 shrink-0">

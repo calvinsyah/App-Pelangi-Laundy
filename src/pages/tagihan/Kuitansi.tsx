@@ -129,11 +129,8 @@ export default function Kuitansi() {
     if (pData.tipe === "RS") {
       let totalKg = 0;
       notas.forEach(n => {
-        if (n.items && Array.isArray(n.items)) {
-          n.items.forEach((it: any) => {
-            if (it.unit === "KG") totalKg += it.qty;
-          });
-        }
+        // Nota RS disimpan dengan items=null dan berat_kg terisi
+        totalKg += n.berat_kg || 0;
       });
       const tarifRS = pData.tarif_rs || 0;
       const tglAwal = notas.length > 0 ? notas[0].tanggal : "";

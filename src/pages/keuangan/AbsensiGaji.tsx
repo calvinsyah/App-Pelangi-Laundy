@@ -101,13 +101,17 @@ export default function AbsensiGaji() {
         { data: absensiList },
         { data: pengaturanData },
         { data: pelangganList },
-        { data: dataGaji }
+        { data: dataGaji },
+        { data: jnData },
+        { data: gajiConfig }
       ] = await Promise.all([
         supabase.from('nota').select('*').gte('tanggal', gajiMulai).lte('tanggal', gajiSelesai),
         supabase.from('absensi').select('*').gte('tanggal', gajiMulai).lte('tanggal', gajiSelesai),
         supabase.from('pengaturan').select('*').limit(1),
         supabase.from('pelanggan').select('*'),
-        supabase.from('gaji').select('*').eq('periode_mulai', gajiMulai).eq('periode_selesai', gajiSelesai)
+        supabase.from('gaji').select('*').eq('periode_mulai', gajiMulai).eq('periode_selesai', gajiSelesai),
+        supabase.from('jenis_nota').select('*'),
+        supabase.from('pelanggan_jenis_nota_config').select('*')
       ]);
 
       const pg = pengaturanData?.[0] || {};
@@ -120,9 +124,8 @@ export default function AbsensiGaji() {
         ongkos = sampleGaji.ongkos_per_kg_snapshot;
       }
 
-      const pelangganMap = Object.fromEntries(pelangganList?.map(p => [p.id, p]) || []);
+      const pelangganMap = Object.fromEntries(pelangganList?.map((p: any) => [p.id, p]) || []);
 
-      const { data: jnData } = await supabase.from('jenis_nota').select('*');
       const jenisNotaList = jnData || [];
 
       const kgHarian: Record<string, number> = {};
@@ -135,7 +138,12 @@ export default function AbsensiGaji() {
 
         const jenisNota = nota.jenis?.toUpperCase();
         // HARUS SAMA DENGAN logika di edge function supabase/functions/gaji-hitung/index.ts
-        if (pel.tipe?.toUpperCase() === "HOTEL" && pel.tipe_billing?.toUpperCase() === "FLAT" && jenisNota === "FLAT") return;
+        // Cek konfigurasi per-pelanggan: apakah jenis nota ini masuk perhitungan gaji?
+        const jnId = jenisNotaList.find((j: any) => j.nama?.toUpperCase() === jenisNota)?.id;
+        const cfg = (gajiConfig as any[])?.find(
+          (c: any) => c.pelanggan_id === nota.pelanggan_id && c.jenis_nota_id === jnId
+        );
+        if (cfg && cfg.hitung_gaji === false) return;
 
         let kg = 0;
         if (jenisNota === "KILOAN") {

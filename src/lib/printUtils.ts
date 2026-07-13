@@ -154,14 +154,28 @@ export const buildLinenRoomHTML = async (
   const hargaP = hpRes.data || [];
 
   let multiplier = 1;
+  let jenisNotaId: number | null = null;
   if (jenisNota) {
-    const { data: jnData } = await supabase.from('jenis_nota').select('multiplier').eq('nama', jenisNota).maybeSingle();
-    if (jnData && jnData.multiplier) {
-      multiplier = jnData.multiplier;
+    const { data: jnData } = await supabase.from('jenis_nota').select('id, multiplier').eq('nama', jenisNota).maybeSingle();
+    if (jnData) {
+      if (jnData.multiplier) multiplier = jnData.multiplier;
+      jenisNotaId = jnData.id;
     }
   }
 
-  // Urutkan linen sesuai konfigurasi
+  // Ambil konfigurasi urutan per-jenis nota (sama dengan logika InputNota layer-2)
+  let notaLinenP: any[] = [];
+  if (jenisNotaId !== null) {
+    const { data: pnlData } = await supabase
+      .from('pelanggan_nota_linen')
+      .select('*')
+      .eq('pelanggan_id', pel.id)
+      .eq('jenis_nota_id', jenisNotaId)
+      .order('urutan', { ascending: true });
+    notaLinenP = pnlData || [];
+  }
+
+  // Urutkan linen sesuai konfigurasi (layer-1: linen_pelanggan)
   let config = masterLinen.map(ml => {
     const lp = linenP.find(x => x.linen_id === ml.id);
     const hp = hargaP.find(x => x.linen_id === ml.id);
@@ -176,6 +190,17 @@ export const buildLinenRoomHTML = async (
     if (a.urutan === b.urutan) return a.id - b.id;
     return a.urutan - b.urutan;
   });
+
+  // Terapkan layer-2: jika ada pelanggan_nota_linen, filter dan urutkan sesuai itu
+  if (notaLinenP.length > 0) {
+    const allowedIds = new Set(notaLinenP.map(c => c.linen_id));
+    config = config.filter(c => allowedIds.has(c.id));
+    config.sort((a, b) => {
+      const idxA = notaLinenP.findIndex(c => c.linen_id === a.id);
+      const idxB = notaLinenP.findIndex(c => c.linen_id === b.id);
+      return idxA - idxB;
+    });
+  }
 
   const grid: Record<number, any> = {};
   config.forEach(item => {
