@@ -294,7 +294,11 @@ export default function Backup() {
       allData['absensi'] = absensi;
 
       // Ambil master data full
-      const masterTables = ["pelanggan", "jenis_nota", "master_linen", "karyawan", "pengaturan", "kop", "harga_pelanggan", "payment_status", "utang", "pelanggan_nota_linen"];
+      const masterTables = [
+        "pelanggan", "jenis_nota", "master_linen", "karyawan", "pengaturan", 
+        "kop", "harga_pelanggan", "linen_pelanggan", "pelanggan_nota_linen", 
+        "payment_status", "locks", "utang", "invoice_numbers", "invoice_counter"
+      ];
       for (const table of masterTables) {
         const { data } = await supabase.from(table).select('*');
         allData[table] = data;
