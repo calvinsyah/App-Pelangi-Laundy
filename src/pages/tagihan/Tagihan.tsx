@@ -83,10 +83,7 @@ export default function Tagihan() {
     return nota.jenis === "FLAT" || nota.jenis === "FLAT ASLI";
   };
 
-  const toRoman = (num: number): string => {
-    const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-    return roman[num] || "";
-  };
+
 
   const fetchInvoice = async () => {
     if (!selectedPelanggan || !selectedBulan) return;
