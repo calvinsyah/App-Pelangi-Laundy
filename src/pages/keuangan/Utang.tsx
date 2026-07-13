@@ -90,24 +90,15 @@ export default function Utang() {
 
   const bayarMutation = useMutation({
     mutationFn: async (u: Utang) => {
-      const { error: errBiaya } = await supabase.from('biaya').insert([{
-        kategori: "CICILAN UTANG",
-        nominal: u.cicilan,
-        lunas: true,
-        tanggal: getLocalDateString()
-      }]);
-      if (errBiaya) throw errBiaya;
-
-      const newSisa = u.sisa_bulan - 1;
-      const newStatus = newSisa <= 0 ? 'LUNAS' : 'AKTIF';
+      const { data, error } = await supabase.rpc('bayar_cicilan_utang', {
+        p_utang_id: u.id,
+        p_tanggal: getLocalDateString()
+      });
+      if (error) throw error;
       
-      const { error: errUtang } = await supabase.from('utang').update({
-        sisa_bulan: newSisa,
-        status: newStatus
-      }).eq('id', u.id);
-      if (errUtang) throw errUtang;
-      
-      return { u, newSisa };
+      // Parse returned data
+      const response = data as { sisa_bulan: number; status: string };
+      return { u, newSisa: response.sisa_bulan };
     },
     onSuccess: (data) => {
       toast(`Berhasil membayar cicilan ${data.u.nama}. Sisa: ${data.newSisa} bulan`, 'success');
