@@ -282,9 +282,8 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
         if (onSuccessCb) onSuccessCb();
         else setTimeout(() => navigate('/transaksi/riwayat'), 1500);
       } else {
-        const nota_id = `${formData.tanggal.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`;
         const { data, error: notaErr } = await supabase.functions.invoke("nota-create", {
-          body: { ...notaData, nota_id, isFlat }
+          body: { ...notaData, isFlat }
         });
         if (notaErr) throw notaErr;
         queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });

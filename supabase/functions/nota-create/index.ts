@@ -79,23 +79,51 @@ serve(async (req) => {
       nota = data;
       notaErr = error;
     } else {
-      const { data, error } = await supabaseClient
-        .from('nota')
-        .insert([{
-          nota_id,
-          tanggal,
-          pelanggan_id,
-          jenis_nota_id,
-          jenis,
-          berat_kg: isKiloan ? berat_kg : null,
-          status_bayar: 'Belum',
-          total,
-          items: (!isKiloan && items && items.length > 0) ? items : null
-        }])
-        .select()
-        .single();
-      nota = data;
-      notaErr = error;
+      let retryCount = 0;
+      const maxRetries = 3;
+      let success = false;
+      
+      while (!success && retryCount < maxRetries) {
+        try {
+          const generatedNotaId = `${tanggal.replace(/-/g, "")}-${Math.floor(Math.random() * 9000) + 1000}`;
+          
+          const { data, error } = await supabaseClient
+            .from('nota')
+            .insert([{
+              nota_id: generatedNotaId,
+              tanggal,
+              pelanggan_id,
+              jenis_nota_id,
+              jenis,
+              berat_kg: isKiloan ? berat_kg : null,
+              status_bayar: 'Belum',
+              total,
+              items: (!isKiloan && items && items.length > 0) ? items : null
+            }])
+            .select()
+            .single();
+            
+          if (error) {
+            // Check if error is unique constraint violation for nota_id (code 23505)
+            if (error.code === '23505' && (error.message.includes('nota_id') || error.message.includes('nota_nota_id_key'))) {
+              retryCount++;
+              if (retryCount >= maxRetries) {
+                notaErr = new Error('Gagal generate nota_id unik setelah 3 kali percobaan');
+                break;
+              }
+              continue; // retry
+            }
+            notaErr = error;
+            break;
+          }
+          
+          nota = data;
+          success = true;
+        } catch (e: any) {
+          notaErr = e;
+          break;
+        }
+      }
     }
 
     if (notaErr) throw notaErr
