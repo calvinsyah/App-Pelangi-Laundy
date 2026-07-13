@@ -130,6 +130,8 @@ export default function Utang() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    const autoStatus = formData.sisa_bulan <= 0 ? 'LUNAS' : 'AKTIF';
+    
     const dataToSave = {
       nama: formData.nama,
       dari: formData.dari,
@@ -137,7 +139,7 @@ export default function Utang() {
       cicilan: formData.cicilan,
       keterangan: formData.keterangan,
       sisa_bulan: formData.sisa_bulan,
-      status: formData.status
+      status: autoStatus
     };
 
     saveMutation.mutate(dataToSave);
