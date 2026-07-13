@@ -105,6 +105,15 @@ export default function Pengaturan() {
     setLoading(true);
     setMsg('Mengunggah logo...');
     try {
+      let oldPath: string | null = null;
+      if (logoUrl) {
+        const prefix = '/storage/v1/object/public/assets/';
+        const index = logoUrl.indexOf(prefix);
+        if (index !== -1) {
+          oldPath = logoUrl.substring(index + prefix.length);
+        }
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `logo-${Date.now()}.${fileExt}`;
       const filePath = `logos/${fileName}`;
@@ -115,6 +124,12 @@ export default function Pengaturan() {
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
+
+      if (oldPath) {
+        supabase.storage.from('assets').remove([oldPath]).catch(err => {
+          console.error("Gagal menghapus logo lama:", err);
+        });
+      }
 
       // Get public URL
       const { data } = supabase.storage.from('assets').getPublicUrl(filePath);
