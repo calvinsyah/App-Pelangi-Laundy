@@ -54,7 +54,7 @@ export default function RiwayatNota() {
         pelanggan (id, nama, tipe_billing, tipe, tarif_rs, tarif_flat),
         jenis_nota (id, nama)
       `)
-      .order('tanggal', { ascending: true })
+      .order('tanggal', { ascending: false })
       .limit(500);
 
     if (filterPelanggan) {
