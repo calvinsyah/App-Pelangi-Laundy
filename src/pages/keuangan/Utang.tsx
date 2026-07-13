@@ -243,10 +243,11 @@ export default function Utang() {
                       {u.status === 'AKTIF' && (
                         <button
                           onClick={() => bayarCicilan(u)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition-colors"
+                          disabled={bayarMutation.isPending && bayarMutation.variables?.id === u.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Bayar Cicilan Bulan Ini"
                         >
-                          <DollarSign size={16} /> Bayar
+                          <DollarSign size={16} /> {bayarMutation.isPending && bayarMutation.variables?.id === u.id ? 'Memproses...' : 'Bayar'}
                         </button>
                       )}
                       <button
