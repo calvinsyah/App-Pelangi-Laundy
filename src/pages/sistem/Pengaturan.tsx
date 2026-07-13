@@ -97,6 +97,11 @@ export default function Pengaturan() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.type.startsWith('image/')) {
+      alert("Format file tidak valid. Harap unggah gambar.");
+      return;
+    }
+
     if (file.size > 2 * 1024 * 1024) {
       alert("Ukuran logo maksimal 2 MB.");
       return;
