@@ -332,7 +332,7 @@ export default function Backup() {
   const handleBersihkanNotaRusak = async () => {
     setLoading(true);
     try {
-      const { data: notaData } = await supabase.from("nota").select("*");
+      const { data: notaData } = await supabase.from("nota").select("*, pelanggan(nama)");
       
       const rusak = (notaData || []).filter((n) => {
         // Nota Kiloan/RS valid jika memiliki berat_kg > 0
@@ -346,10 +346,29 @@ export default function Backup() {
       });
 
       if (rusak.length > 0) {
-        for (const n of rusak) {
-          await supabase.from("nota").delete().eq("id", n.id);
+        const maxDisplay = 15;
+        const rincianList = rusak.slice(0, maxDisplay).map((r: any) => 
+          `- ${r.nota_id || 'Tanpa ID'} (${r.tanggal}) - ${r.pelanggan?.nama || 'Tanpa Nama'}`
+        );
+        let rincian = rincianList.join('\n');
+        if (rusak.length > maxDisplay) {
+          rincian += `\n... dan ${rusak.length - maxDisplay} nota lainnya`;
         }
-        toast(`${rusak.length} nota rusak dihapus dari database.`, "success");
+
+        const ok = await confirm(`Ditemukan ${rusak.length} nota rusak (kosong tanpa berat/item):\n\n${rincian}\n\nHapus nota-nota ini secara permanen?`);
+        if (!ok) {
+          setLoading(false);
+          return;
+        }
+
+        const ids = rusak.map((r: any) => r.id);
+        const { error } = await supabase.from("nota").delete().in("id", ids);
+
+        if (error) {
+          toast(`Gagal menghapus batch nota rusak: ${error.message}`, "error");
+        } else {
+          toast(`${rusak.length} nota rusak dihapus dari database.`, "success");
+        }
       } else {
         toast("Tidak ada nota rusak.", "info");
       }
