@@ -268,13 +268,11 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
         jenis_nota_id: parseInt(formData.jenis_nota_id) === 0 ? null : parseInt(formData.jenis_nota_id),
         jenis: jenisNotaList.find(j => j.id.toString() === formData.jenis_nota_id)?.nama || 'KILOAN',
         berat_kg: (isRS) ? formData.berat_kg : null,
-        status_bayar: 'Belum',
         total: calculatedTotal,
         items: (isRS) ? null : validItems
       };
 
       if (editNotaId) {
-        // Prevent changing status_bayar if it's already Lunas
         const { error: notaErr } = await supabase.functions.invoke("nota-create", {
           body: { ...notaData, id: editNotaId, action: 'update', isFlat }
         });
