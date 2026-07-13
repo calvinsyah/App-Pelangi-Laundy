@@ -107,27 +107,32 @@ export default function Tagihan() {
       setSnapshotData(snap);
       setIsPaid(paid);
 
-      // 2. Fetch all nota in that month
-      const startDate = `${selectedBulan}-01`;
-      const year = parseInt(selectedBulan.split('-')[0]);
-      const month = parseInt(selectedBulan.split('-')[1]);
-      const lastDay = new Date(year, month, 0).getDate();
-      const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      // 2. Fetch all nota in that month or use snapshot
+      if (locked && snap && (snap as any).notas) {
+        setInvoiceData((snap as any).notas);
+        setInvoiceNumber((snap as any).invoiceNumber || await generateDocumentNumber('INV', pel.kode_invoice, selectedBulan));
+      } else {
+        const startDate = `${selectedBulan}-01`;
+        const year = parseInt(selectedBulan.split('-')[0]);
+        const month = parseInt(selectedBulan.split('-')[1]);
+        const lastDay = new Date(year, month, 0).getDate();
+        const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-      const { data: notas, error: notaErr } = await supabase
-        .from('nota')
-        .select('*')
-        .eq('pelanggan_id', pel.id)
-        .gte('tanggal', startDate)
-        .lte('tanggal', endDate)
-        .order('tanggal', { ascending: true });
+        const { data: notas, error: notaErr } = await supabase
+          .from('nota')
+          .select('*')
+          .eq('pelanggan_id', pel.id)
+          .gte('tanggal', startDate)
+          .lte('tanggal', endDate)
+          .order('tanggal', { ascending: true });
 
-      if (notaErr) throw notaErr;
+        if (notaErr) throw notaErr;
 
-      setInvoiceData(notas || []);
+        setInvoiceData(notas || []);
 
-      const noInv = await generateDocumentNumber('INV', pel.kode_invoice, selectedBulan);
-      setInvoiceNumber(noInv);
+        const noInv = await generateDocumentNumber('INV', pel.kode_invoice, selectedBulan);
+        setInvoiceNumber(noInv);
+      }
 
     } catch (err) {
       console.error('Error fetching invoice:', err);
@@ -149,13 +154,15 @@ export default function Tagihan() {
     const newLock = !isLocked;
     
     let newSnapshot = snapshotData;
-    if (newLock && !snapshotData) {
-      // Create snapshot when locking if it doesn't exist
+    if (newLock) {
+      // Create full snapshot when locking
       newSnapshot = {
         tarif_rs: rawPel.tarif_rs,
         tarif_flat: rawPel.tarif_flat,
         tipe_billing: rawPel.tipe_billing,
-        tipe: rawPel.tipe
+        tipe: rawPel.tipe,
+        notas: invoiceData,
+        invoiceNumber: invoiceNumber
       };
     }
 
