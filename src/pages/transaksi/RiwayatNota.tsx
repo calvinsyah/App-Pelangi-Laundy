@@ -86,7 +86,7 @@ export default function RiwayatNota() {
   }, [filterBulan, filterPelanggan]);
 
   const handleDelete = async (id: number) => {
-    const ok = await confirm('Yakin ingin menghapus nota ini? Aksi ini tidak dapat dibatalkan.');
+    const ok = await confirm('Yakin ingin menghapus nota ini secara permanen? Aksi ini tidak dapat dibatalkan.');
     if (ok) {
       const { error } = await supabase.from('nota').delete().eq('id', id);
       if (error) {
