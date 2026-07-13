@@ -5,6 +5,7 @@ import { openPrintWindow, downloadHTML, generateKopHTML } from '../../lib/printU
 import { toRoman, terbilang } from '../../lib/utils';
 import { generateDocumentNumber } from '../../lib/invoiceUtils';
 import { useToast } from '../../components/ToastProvider';
+import { useConfirm } from '../../components/ConfirmDialog';
 
 interface Pelanggan {
   id: number;
@@ -20,6 +21,7 @@ interface Pelanggan {
 
 export default function Kuitansi() {
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [pelangganList, setPelangganList] = useState<Pelanggan[]>([]);
   const [selectedPelanggan, setSelectedPelanggan] = useState('');
   const [selectedBulan, setSelectedBulan] = useState(new Date().toISOString().substring(0, 7));
@@ -207,10 +209,28 @@ export default function Kuitansi() {
     `;
   };
 
+  const checkPaymentStatus = async (pelangganId: number, bulan: string) => {
+    const { data } = await supabase
+      .from('payment_status')
+      .select('is_paid')
+      .eq('pelanggan_id', pelangganId)
+      .eq('bulan', bulan)
+      .maybeSingle();
+    return data?.is_paid || false;
+  };
+
   const handlePrint = async () => {
     if (!selectedPelanggan || !selectedBulan) return toast("Pilih pelanggan dan bulan!");
+    const pData = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!pData) return;
+
     setLoading(true);
     try {
+      const isPaid = await checkPaymentStatus(pData.id, selectedBulan);
+      if (!isPaid) {
+        const ok = await confirm("Periode ini belum ditandai Lunas di Tagihan. Tetap cetak kwitansi?");
+        if (!ok) return;
+      }
       const html = await buildKuitansiHTML(selectedPelanggan, selectedBulan);
       openPrintWindow(html, `Kwitansi - ${selectedPelanggan}`);
     } finally {
@@ -220,8 +240,16 @@ export default function Kuitansi() {
 
   const handleDownload = async () => {
     if (!selectedPelanggan || !selectedBulan) return toast("Pilih pelanggan dan bulan!");
+    const pData = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!pData) return;
+
     setLoading(true);
     try {
+      const isPaid = await checkPaymentStatus(pData.id, selectedBulan);
+      if (!isPaid) {
+        const ok = await confirm("Periode ini belum ditandai Lunas di Tagihan. Tetap cetak kwitansi?");
+        if (!ok) return;
+      }
       const html = await buildKuitansiHTML(selectedPelanggan, selectedBulan);
       downloadHTML(html, `Kuitansi_${selectedPelanggan.replace(/\s/g, '_')}_${selectedBulan}.html`);
     } finally {
