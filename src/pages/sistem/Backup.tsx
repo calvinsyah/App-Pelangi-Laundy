@@ -153,20 +153,24 @@ export default function Backup() {
         }
 
         const ringkasan = payloads.map(p => `- ${p.table}: ${p.rows.length} baris`).join('\n');
-        const ok = await confirm(`File ini berisi:\n${ringkasan}\n\nData dengan ID yang sama akan ditimpa. Lanjutkan proses impor?`);
+        const ok = await confirm(`Preview Impor:\n${ringkasan}\n\nPerhatian: Operasi ini bersifat MERGE (Timpa). Data dengan ID yang sama akan diperbarui, data baru akan ditambah. Lanjutkan proses impor?`);
         
         if (!ok) {
           setLoading(false);
           return;
         }
 
-        for (const p of payloads) {
-          const { error } = await supabase.from(p.table).upsert(p.rows);
-          if (error) console.error(`Failed to import table ${p.table}:`, error);
-          else syncCount += p.rows.length;
+        const { error } = await supabase.rpc('restore_import_atomic', { p_payload: payloads });
+        
+        if (error) {
+          console.error("Failed to restore via RPC:", error);
+          toast(`Impor gagal: ${error.message}`, 'error');
+          setLoading(false);
+          return;
         }
 
-        toast(`Impor selesai! Berhasil menyinkronkan ${syncCount} baris.`, 'success');
+        syncCount = payloads.reduce((acc, p) => acc + p.rows.length, 0);
+        toast(`Impor (Merge) selesai! Berhasil memproses ${syncCount} baris.`, 'success');
         setTimeout(() => window.location.reload(), 1500);
       } catch (err) {
         console.error(err);
@@ -338,9 +342,9 @@ export default function Backup() {
         </div>
 
         <div className="border-t border-gray-100 pt-6 space-y-4">
-          <h3 className="text-lg font-bold text-gray-700 font-sans">Impor Data (Restore)</h3>
+          <h3 className="text-lg font-bold text-gray-700 font-sans">Impor Data (Merge / Sinkronisasi)</h3>
           <p className="text-sm text-gray-500">
-            Unggah file backup JSON yang sebelumnya diekspor untuk memperbarui database Supabase Anda. Tindakan ini akan menimpa data yang memiliki kecocokan ID.
+            Unggah file backup JSON yang sebelumnya diekspor untuk melakukan sinkronisasi/merge ke database. Tindakan ini HANYA akan menimpa data yang memiliki kecocokan ID, atau menambah baris baru. <strong>Ini BUKAN pemulihan titik-waktu penuh yang menghapus/me-reset data saat ini.</strong>
           </p>
           <label className="inline-flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 px-6 rounded-lg cursor-pointer transition-colors">
             <Upload size={18} /> Pilih File Backup JSON
