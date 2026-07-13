@@ -72,16 +72,19 @@ export default function AbsensiGaji() {
     setLoading(true);
     setMsg('');
     try {
-      const promises = Object.entries(attendance).map(async ([kidStr, status]) => {
-        const kid = parseInt(kidStr, 10);
-        await supabase.from('absensi').delete().eq('tanggal', absensiDate).eq('karyawan_id', kid);
-        return supabase.from('absensi').insert([{ tanggal: absensiDate, karyawan_id: kid, status }]);
-      });
-      await Promise.all(promises);
+      const rows = Object.entries(attendance).map(([kidStr, status]) => ({
+        tanggal: absensiDate,
+        karyawan_id: parseInt(kidStr, 10),
+        status
+      }));
+      
+      const { error } = await supabase.from('absensi').upsert(rows, { onConflict: 'tanggal,karyawan_id' });
+      if (error) throw error;
+      
       setMsg('Absensi berhasil disimpan!');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setMsg('Gagal menyimpan absensi');
+      setMsg(err.message || 'Gagal menyimpan absensi');
     } finally {
       setLoading(false);
     }
