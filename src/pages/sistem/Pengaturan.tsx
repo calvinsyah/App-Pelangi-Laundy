@@ -63,6 +63,12 @@ export default function Pengaturan() {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (pgSettings.tarif_internal_hotel <= 0 || pgSettings.ongkos_per_kg <= 0) {
+      setMsg('Tarif Internal Hotel dan Ongkos per Kg harus bernilai positif (lebih besar dari 0).');
+      return;
+    }
+
     setLoading(true);
     setMsg('');
     const { error } = await supabase.from('pengaturan').upsert({ id: 1, ...pgSettings });
