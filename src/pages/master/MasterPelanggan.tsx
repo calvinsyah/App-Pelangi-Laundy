@@ -157,7 +157,7 @@ export default function MasterPelanggan() {
         setIsModalOpen(false);
         fetchPelanggan();
       } else {
-        toast('Gagal mengubah pelanggan', 'error');
+        toast(error.message || 'Gagal mengubah pelanggan', 'error');
       }
     } else {
       const { error } = await supabase.from('pelanggan').insert([formData]);
@@ -166,7 +166,7 @@ export default function MasterPelanggan() {
         setIsModalOpen(false);
         fetchPelanggan();
       } else {
-        toast('Gagal menambahkan pelanggan', 'error');
+        toast(error.message || 'Gagal menambahkan pelanggan', 'error');
       }
     }
   };
