@@ -127,10 +127,9 @@ export default function Tagihan() {
       if (!pel) return;
 
       // 1. Get status lock & bayar
-      const lockKey = `${selectedPelanggan}_${selectedBulan}`;
       const [lockRes, payRes] = await Promise.all([
-        supabase.from('locks').select('is_locked, snapshot_data').eq('key', lockKey).maybeSingle(),
-        supabase.from('payment_status').select('is_paid').eq('key', lockKey).maybeSingle()
+        supabase.from('locks').select('is_locked, snapshot_data').eq('pelanggan_id', pel.id).eq('bulan', selectedBulan).maybeSingle(),
+        supabase.from('payment_status').select('is_paid').eq('pelanggan_id', pel.id).eq('bulan', selectedBulan).maybeSingle()
       ]);
 
       const locked = lockRes.data?.is_locked || false;
@@ -177,6 +176,7 @@ export default function Tagihan() {
     const rawPel = pelangganList.find(p => p.nama === selectedPelanggan);
     if (!rawPel) return;
 
+    // Build the legacy key for backward compatibility
     const lockKey = `${selectedPelanggan}_${selectedBulan}`;
     const newLock = !isLocked;
     
@@ -191,8 +191,11 @@ export default function Tagihan() {
       };
     }
 
+    // We must pass key because it is still the primary key, but we also pass pelanggan_id and bulan
     const { error } = await supabase.from('locks').upsert({ 
       key: lockKey, 
+      pelanggan_id: rawPel.id,
+      bulan: selectedBulan,
       is_locked: newLock,
       snapshot_data: newSnapshot 
     });
@@ -203,9 +206,17 @@ export default function Tagihan() {
   };
 
   const handleTogglePaid = async () => {
+    const rawPel = pelangganList.find(p => p.nama === selectedPelanggan);
+    if (!rawPel) return;
+
     const lockKey = `${selectedPelanggan}_${selectedBulan}`;
     const newPaid = !isPaid;
-    const { error } = await supabase.from('payment_status').upsert({ key: lockKey, is_paid: newPaid });
+    const { error } = await supabase.from('payment_status').upsert({ 
+      key: lockKey, 
+      pelanggan_id: rawPel.id,
+      bulan: selectedBulan,
+      is_paid: newPaid 
+    });
     if (!error) {
       setIsPaid(newPaid);
       queryClient.invalidateQueries({ queryKey: ['dashboard_metrics'] });
