@@ -126,7 +126,8 @@ export default function AbsensiGaji() {
         if (!pel) return;
 
         const jenisNota = nota.jenis?.toUpperCase();
-        if (pel.tipe_billing?.toUpperCase() === "FLAT" && jenisNota === "FLAT") return;
+        // HARUS SAMA DENGAN logika di edge function supabase/functions/gaji-hitung/index.ts
+        if (pel.tipe?.toUpperCase() === "HOTEL" && pel.tipe_billing?.toUpperCase() === "FLAT" && jenisNota === "FLAT") return;
 
         let kg = 0;
         if (jenisNota === "KILOAN") {
