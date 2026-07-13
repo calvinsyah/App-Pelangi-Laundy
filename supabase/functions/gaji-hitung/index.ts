@@ -78,8 +78,14 @@ serve(async (req) => {
     }
 
     const pg = pengaturanData?.[0] || {}
-    const tarifInternal = pg.tarif_internal_hotel || 7000
-    const ongkos = pg.ongkos_per_kg || 1200
+    let tarifInternal = pg.tarif_internal_hotel || 7000
+    let ongkos = pg.ongkos_per_kg || 1200
+
+    const sampleGaji = dataGaji?.find((g: any) => g.tarif_internal_hotel_snapshot != null && g.ongkos_per_kg_snapshot != null)
+    if (sampleGaji) {
+      tarifInternal = sampleGaji.tarif_internal_hotel_snapshot
+      ongkos = sampleGaji.ongkos_per_kg_snapshot
+    }
 
     // Compute kg harian
     const kgHarian: Record<string, number> = {}
@@ -154,7 +160,9 @@ serve(async (req) => {
         rincian,
         periodeMulai: tglMulai,
         periodeSelesai: tglSelesai,
-        gajiId: simpan.id || null
+        gajiId: simpan.id || null,
+        tarifInternalDipakai: tarifInternal,
+        ongkosDipakai: ongkos
       }
     })
 

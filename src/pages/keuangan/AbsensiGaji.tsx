@@ -111,8 +111,14 @@ export default function AbsensiGaji() {
       ]);
 
       const pg = pengaturanData?.[0] || {};
-      const tarifInternal = pg.tarif_internal_hotel || 7000;
-      const ongkos = pg.ongkos_per_kg || 1200;
+      let tarifInternal = pg.tarif_internal_hotel || 7000;
+      let ongkos = pg.ongkos_per_kg || 1200;
+
+      const sampleGaji = dataGaji?.find(g => g.tarif_internal_hotel_snapshot != null && g.ongkos_per_kg_snapshot != null);
+      if (sampleGaji) {
+        tarifInternal = sampleGaji.tarif_internal_hotel_snapshot;
+        ongkos = sampleGaji.ongkos_per_kg_snapshot;
+      }
 
       const pelangganMap = Object.fromEntries(pelangganList?.map(p => [p.id, p]) || []);
 
@@ -196,7 +202,9 @@ export default function AbsensiGaji() {
           rincian,
           periodeMulai: gajiMulai,
           periodeSelesai: gajiSelesai,
-          gajiId: simpan.id || null
+          gajiId: simpan.id || null,
+          tarifInternalDipakai: tarifInternal,
+          ongkosDipakai: ongkos
         };
       });
 
@@ -241,10 +249,15 @@ export default function AbsensiGaji() {
     if (!activeGaji) return;
 
     try {
+      const snapshotData = {
+        tarif_internal_hotel_snapshot: activeGaji.tarifInternalDipakai,
+        ongkos_per_kg_snapshot: activeGaji.ongkosDipakai
+      };
+
       if (activeGaji.gajiId) {
         await supabase
           .from('gaji')
-          .update(modalForm)
+          .update({ ...modalForm, ...snapshotData })
           .eq('id', activeGaji.gajiId);
       } else {
         await supabase
@@ -253,7 +266,8 @@ export default function AbsensiGaji() {
             karyawan_id: activeGaji.karyawan.id,
             periode_mulai: activeGaji.periodeMulai,
             periode_selesai: activeGaji.periodeSelesai,
-            ...modalForm
+            ...modalForm,
+            ...snapshotData
           }]);
       }
       setIsEditModalOpen(false);
