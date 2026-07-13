@@ -17,3 +17,7 @@ test-results/
 script.js
 style.css
 playwright-report/
+
+scratch/
+*_tmp.ts
+.opencode/
