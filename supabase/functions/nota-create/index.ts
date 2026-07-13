@@ -96,7 +96,6 @@ serve(async (req) => {
               jenis_nota_id,
               jenis,
               berat_kg: isKiloan ? berat_kg : null,
-              status_bayar: 'Belum',
               total,
               items: (!isKiloan && items && items.length > 0) ? items : null
             }])
