@@ -65,19 +65,23 @@ Menu utama untuk operasional laundry harian.
 ## 5. Menu Tagihan
 Menu untuk mengelola penagihan ke pelanggan.
 
-### 5.1. Tagihan (Invoice)
-- **Fungsi**: Membuat tagihan kumulatif dari beberapa nota.
+### 5.1. Tagihan (Invoice) & Laporan Linen
+- **Fungsi**: Membuat tagihan kumulatif dari nota yang ada serta melihat laporan Linen Room.
 - **Cara Penggunaan**:
-  - Pilih pelanggan dan rentang tanggal nota yang belum ditagihkan.
-  - Sistem akan mengkalkulasi total tagihan.
-  - Klik **Buat Tagihan / Invoice**. Invoice akan mendapatkan nomor unik.
+  - Pilih **Pelanggan**. 
+    - Untuk pelanggan tipe **HOTEL**, sistem akan otomatis menampilkan pilihan **Bulan Tagihan**.
+    - Untuk pelanggan tipe **RS (Rumah Sakit)**, sistem akan menampilkan pilihan **Rentang Tanggal (Mulai s/d Akhir)** yang bisa diubah secara bebas.
+  - Sistem akan menarik seluruh nota yang sesuai dengan periode tersebut.
+  - Untuk melihat detail laporan jumlah cucian linen, pindah ke tab **Laporan Linen Room**.
+  - Klik tombol **LOCKED / UNLOCKED** untuk mengunci invoice pada periode tersebut. (Khusus pelanggan RS, sistem akan menolak/memblokir secara otomatis jika rentang tanggal yang dipilih beririsan dengan periode lain yang sudah dikunci).
+  - Klik **Cetak Invoice** untuk menghasilkan dokumen cetak tagihan. Nomor invoice akan terbentuk otomatis (khusus RS, penomoran bulan menggunakan bulan dari tanggal akhir rentang).
 
 ### 5.2. Kuitansi
-- **Fungsi**: Mencatat pembayaran dari invoice yang sudah dibuat.
+- **Fungsi**: Mencetak tanda terima pembayaran (kuitansi).
 - **Cara Penggunaan**:
-  - Pilih invoice yang akan dibayar.
-  - Masukkan nominal pembayaran.
-  - Cetak kuitansi sebagai bukti pembayaran yang sah.
+  - Pilih **Pelanggan**. Sama seperti pada menu Tagihan, input periode akan otomatis menyesuaikan tipe pelanggan (Bulan untuk HOTEL, Rentang Tanggal untuk RS).
+  - Klik **Cetak** atau **Download** untuk mencetak/mengunduh kuitansi. 
+  - Pastikan status pembayaran di menu Tagihan sudah ditandai **LUNAS** (jika belum, sistem akan menampilkan pop-up konfirmasi).
 
 ## 6. Menu Keuangan (Hanya Admin)
 Menu untuk memantau arus kas dan penggajian.
