@@ -21,7 +21,7 @@ test.describe('Modul Tagihan (Invoice & Kuitansi) - E2E', () => {
     await page.goto('/tagihan/invoice');
     
     // Pastikan judul halaman Invoice tampil
-    await expect(page.getByRole('heading', { name: 'Modul Tagihan (Invoice)' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Modul Tagihan & Laporan' })).toBeVisible();
 
     // Pilih pelanggan pertama dari dropdown (native select)
     const selectPelanggan = page.locator('select').first();
@@ -33,9 +33,6 @@ test.describe('Modul Tagihan (Invoice & Kuitansi) - E2E', () => {
     // Pastikan tombol-tombol aksi cetak tersedia
     const cetakInvoiceBtn = page.getByRole('button', { name: /Cetak Invoice/i });
     await expect(cetakInvoiceBtn).toBeVisible();
-    
-    const cetakLinenBtn = page.getByRole('button', { name: /Cetak Linen/i });
-    await expect(cetakLinenBtn).toBeVisible();
     
     const isInvoiceDisabled = await cetakInvoiceBtn.isDisabled();
     if (!isInvoiceDisabled) {
@@ -49,6 +46,12 @@ test.describe('Modul Tagihan (Invoice & Kuitansi) - E2E', () => {
         await popup.close();
       }
     }
+
+    await page.getByRole('button', { name: 'Laporan Linen Room' }).click();
+    const cetakLinenBtn = page.getByRole('button', { name: /Cetak Linen/i });
+    await expect(cetakLinenBtn).toBeVisible();
+
+
   });
 
   test('Membuka dan memproses halaman Kuitansi', async ({ page }) => {
