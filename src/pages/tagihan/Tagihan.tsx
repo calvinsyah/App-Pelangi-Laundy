@@ -3,8 +3,9 @@ import { supabase } from '../../lib/supabaseClient';
 import { Lock, Unlock, Check, X, FileText, Printer, Download } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { generateKopHTML, openPrintWindow, buildLinenRoomHTML, buildInvoicePelangganHTML } from '../../lib/printUtils';
-import { fmtRp, toRoman } from '../../lib/utils';
+import { fmtRp, toRoman, getLocalDateString } from '../../lib/utils';
 import { generateDocumentNumber } from '../../lib/invoiceUtils';
+import { getMonthRange, isValidRange, buildPeriodKey } from '../../lib/dateUtils';
 import { useToast } from '../../components/ToastProvider';
 
 interface Pelanggan {
@@ -40,6 +41,9 @@ export default function Tagihan() {
   const queryClient = useQueryClient();
   const [selectedPelanggan, setSelectedPelanggan] = useState('');
   const [selectedBulan, setSelectedBulan] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+  
+  const [tanggalMulai, setTanggalMulai] = useState(getMonthRange(new Date().toISOString().substring(0, 7)).start);
+  const [tanggalAkhir, setTanggalAkhir] = useState(getLocalDateString());
   
   const [activeTab, setActiveTab] = useState<'invoice' | 'linen_room'>('invoice');
   const [selectedJenisNota, setSelectedJenisNota] = useState('');
@@ -86,36 +90,55 @@ export default function Tagihan() {
 
 
   const fetchInvoice = async () => {
-    if (!selectedPelanggan || !selectedBulan) return;
+    if (!selectedPelanggan || (!selectedBulan && !tanggalMulai)) return;
     setLoading(true);
 
     try {
       const pel = pelangganList.find(p => p.nama === selectedPelanggan);
       if (!pel) return;
 
+      const isRS = pel.tipe?.toUpperCase() === 'RS';
+      if (isRS && !isValidRange(tanggalMulai, tanggalAkhir)) {
+        toast("Tanggal akhir tidak boleh lebih kecil dari tanggal mulai");
+        setLoading(false);
+        return;
+      }
+
+      const lockQuery = supabase.from('locks').select('is_locked, snapshot_data, tanggal_mulai').eq('pelanggan_id', pel.id);
+      const payQuery = supabase.from('payment_status').select('is_paid').eq('pelanggan_id', pel.id);
+
+      if (isRS) {
+        const fallbackBulan = tanggalMulai.substring(0, 7);
+        lockQuery.or(`and(tanggal_mulai.eq.${tanggalMulai},tanggal_akhir.eq.${tanggalAkhir}),and(bulan.eq.${fallbackBulan},tanggal_mulai.is.null)`);
+        payQuery.or(`and(tanggal_mulai.eq.${tanggalMulai},tanggal_akhir.eq.${tanggalAkhir}),and(bulan.eq.${fallbackBulan},tanggal_mulai.is.null)`);
+      } else {
+        lockQuery.eq('bulan', selectedBulan);
+        payQuery.eq('bulan', selectedBulan);
+      }
+
       // 1. Get status lock & bayar
-      const [lockRes, payRes] = await Promise.all([
-        supabase.from('locks').select('is_locked, snapshot_data').eq('pelanggan_id', pel.id).eq('bulan', selectedBulan).maybeSingle(),
-        supabase.from('payment_status').select('is_paid').eq('pelanggan_id', pel.id).eq('bulan', selectedBulan).maybeSingle()
-      ]);
+      const [lockRes, payRes] = await Promise.all([lockQuery.maybeSingle(), payQuery.maybeSingle()]);
 
       const locked = lockRes.data?.is_locked || false;
       const snap = lockRes.data?.snapshot_data || null;
       const paid = payRes.data?.is_paid || false;
+      const isLegacyLock = isRS && lockRes.data?.tanggal_mulai === null;
+
       setIsLocked(locked);
       setSnapshotData(snap);
       setIsPaid(paid);
 
+      const periode = isRS 
+        ? (isLegacyLock ? { mode: 'bulan' as const, bulan: tanggalMulai.substring(0, 7) } : { mode: 'range' as const, tanggalMulai, tanggalAkhir })
+        : { mode: 'bulan' as const, bulan: selectedBulan };
+
       // 2. Fetch all nota in that month or use snapshot
       if (locked && snap && (snap as any).notas) {
         setInvoiceData((snap as any).notas);
-        setInvoiceNumber((snap as any).invoiceNumber || await generateDocumentNumber('INV', pel.kode_invoice, selectedBulan));
+        setInvoiceNumber((snap as any).invoiceNumber || await generateDocumentNumber('INV', pel.kode_invoice, periode));
       } else {
-        const startDate = `${selectedBulan}-01`;
-        const year = parseInt(selectedBulan.split('-')[0]);
-        const month = parseInt(selectedBulan.split('-')[1]);
-        const lastDay = new Date(year, month, 0).getDate();
-        const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        const startDate = isRS ? tanggalMulai : `${selectedBulan}-01`;
+        const endDate = isRS ? tanggalAkhir : getMonthRange(selectedBulan).end;
 
         const { data: notas, error: notaErr } = await supabase
           .from('nota')
@@ -129,7 +152,7 @@ export default function Tagihan() {
 
         setInvoiceData(notas || []);
 
-        const noInv = await generateDocumentNumber('INV', pel.kode_invoice, selectedBulan);
+        const noInv = await generateDocumentNumber('INV', pel.kode_invoice, periode);
         setInvoiceNumber(noInv);
       }
 
@@ -142,15 +165,37 @@ export default function Tagihan() {
 
   useEffect(() => {
     fetchInvoice();
-  }, [selectedPelanggan, selectedBulan, pelangganList]);
+  }, [selectedPelanggan, selectedBulan, tanggalMulai, tanggalAkhir, pelangganList]);
 
   const handleToggleLock = async () => {
     const rawPel = pelangganList.find(p => p.nama === selectedPelanggan);
     if (!rawPel) return;
 
-    // Build the legacy key for backward compatibility
-    const lockKey = `${selectedPelanggan}_${selectedBulan}`;
+    const isRS = rawPel.tipe?.toUpperCase() === 'RS';
     const newLock = !isLocked;
+
+    if (newLock && isRS) {
+      // Validasi overlap khusus RS
+      const { data: existingLocks } = await supabase
+        .from('locks')
+        .select('tanggal_mulai, tanggal_akhir')
+        .eq('pelanggan_id', rawPel.id)
+        .eq('is_locked', true)
+        .not('tanggal_mulai', 'is', null);
+
+      if (existingLocks) {
+        const overlap = existingLocks.find(l => 
+          tanggalMulai <= l.tanggal_akhir && tanggalAkhir >= l.tanggal_mulai
+        );
+        if (overlap) {
+          toast(`Gagal: Periode beririsan dengan invoice terkunci (${overlap.tanggal_mulai} s/d ${overlap.tanggal_akhir})`);
+          return;
+        }
+      }
+    }
+
+    // Build the legacy key for backward compatibility
+    const lockKey = isRS ? buildPeriodKey(tanggalMulai, tanggalAkhir) : `${selectedPelanggan}_${selectedBulan}`;
     
     let newSnapshot = snapshotData;
     if (newLock) {
@@ -161,18 +206,27 @@ export default function Tagihan() {
         tipe_billing: rawPel.tipe_billing,
         tipe: rawPel.tipe,
         notas: invoiceData,
-        invoiceNumber: invoiceNumber
+        invoiceNumber: invoiceNumber,
+        tanggalMulai: isRS ? tanggalMulai : undefined,
+        tanggalAkhir: isRS ? tanggalAkhir : undefined
       };
     }
 
-    // We must pass key because it is still the primary key, but we also pass pelanggan_id and bulan
-    const { error } = await supabase.from('locks').upsert({ 
+    const payload: any = {
       key: lockKey, 
       pelanggan_id: rawPel.id,
-      bulan: selectedBulan,
       is_locked: newLock,
       snapshot_data: newSnapshot 
-    });
+    };
+    if (isRS) {
+      payload.tanggal_mulai = tanggalMulai;
+      payload.tanggal_akhir = tanggalAkhir;
+      payload.bulan = null;
+    } else {
+      payload.bulan = selectedBulan;
+    }
+
+    const { error } = await supabase.from('locks').upsert(payload);
     if (error) {
       toast(error.message || 'Gagal mengubah status kunci invoice');
     } else {
@@ -185,14 +239,24 @@ export default function Tagihan() {
     const rawPel = pelangganList.find(p => p.nama === selectedPelanggan);
     if (!rawPel) return;
 
-    const lockKey = `${selectedPelanggan}_${selectedBulan}`;
+    const isRS = rawPel.tipe?.toUpperCase() === 'RS';
+    const lockKey = isRS ? buildPeriodKey(tanggalMulai, tanggalAkhir) : `${selectedPelanggan}_${selectedBulan}`;
     const newPaid = !isPaid;
-    const { error } = await supabase.from('payment_status').upsert({ 
+    
+    const payload: any = {
       key: lockKey, 
       pelanggan_id: rawPel.id,
-      bulan: selectedBulan,
       is_paid: newPaid 
-    });
+    };
+    if (isRS) {
+      payload.tanggal_mulai = tanggalMulai;
+      payload.tanggal_akhir = tanggalAkhir;
+      payload.bulan = null;
+    } else {
+      payload.bulan = selectedBulan;
+    }
+
+    const { error } = await supabase.from('payment_status').upsert(payload);
     if (error) {
       toast(error.message || 'Gagal mengubah status pelunasan invoice');
     } else {
@@ -264,11 +328,15 @@ export default function Tagihan() {
     const rawPelData = pelangganList.find(p => p.nama === selectedPelanggan);
     if (!rawPelData || invoiceData.length === 0) return;
     const pelData = { ...rawPelData, ...(snapshotData || {}) };
+    const isRS = pelData.tipe?.toUpperCase() === 'RS';
     setLoading(true);
     try {
       const { data: kopData } = await supabase.from('kop').select('*').maybeSingle();
       const kopHTML = generateKopHTML(kopData || { nama: 'PELANGI LAUNDRY' }, kopData?.logo_url);
-      const html = await buildInvoicePelangganHTML(pelData, selectedBulan, invoiceData, kopHTML, invoiceNumber);
+      
+      const periodeRange = isRS ? { tanggalMulai, tanggalAkhir } : undefined;
+      // @ts-ignore
+      const html = await buildInvoicePelangganHTML(pelData, selectedBulan, invoiceData, kopHTML, invoiceNumber, periodeRange);
       openPrintWindow(html, `Invoice - ${pelData.nama}`);
     } catch (err: any) {
       toast(err.message || 'Gagal mencetak Invoice');
@@ -335,13 +403,31 @@ export default function Tagihan() {
             </select>
           </div>
           <div>
-            <label className="block text-gray-700 text-sm font-bold mb-2">Bulan Tagihan</label>
-            <input
-              type="month"
-              value={selectedBulan}
-              onChange={(e) => setSelectedBulan(e.target.value)}
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label className="block text-gray-700 text-sm font-bold mb-2">Periode Tagihan</label>
+            {pelangganList.find(p => p.nama === selectedPelanggan)?.tipe?.toUpperCase() === 'RS' ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={tanggalMulai}
+                  onChange={(e) => setTanggalMulai(e.target.value)}
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-gray-500 font-bold">-</span>
+                <input
+                  type="date"
+                  value={tanggalAkhir}
+                  onChange={(e) => setTanggalAkhir(e.target.value)}
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            ) : (
+              <input
+                type="month"
+                value={selectedBulan}
+                onChange={(e) => setSelectedBulan(e.target.value)}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
           </div>
           {activeTab === 'linen_room' && (
             <div>
