@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Printer, Download } from 'lucide-react';
 import { openPrintWindow, downloadHTML, generateKopHTML } from '../../lib/printUtils';
-import { toRoman, terbilang } from '../../lib/utils';
+import { toRoman, terbilang, getLocalDateString } from '../../lib/utils';
 import { generateDocumentNumber } from '../../lib/invoiceUtils';
+import { getMonthRange } from '../../lib/dateUtils';
 import { useToast } from '../../components/ToastProvider';
 import { useConfirm } from '../../components/ConfirmDialog';
 
@@ -25,6 +26,8 @@ export default function Kuitansi() {
   const [pelangganList, setPelangganList] = useState<Pelanggan[]>([]);
   const [selectedPelanggan, setSelectedPelanggan] = useState('');
   const [selectedBulan, setSelectedBulan] = useState(new Date().toISOString().substring(0, 7));
+  const [tanggalMulai, setTanggalMulai] = useState(getMonthRange(new Date().toISOString().substring(0, 7)).start);
+  const [tanggalAkhir, setTanggalAkhir] = useState(getLocalDateString());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -51,11 +54,10 @@ export default function Kuitansi() {
     const pData = pelangganList.find(p => p.nama === pelNama);
     if (!pData) return '<p>Pelanggan tidak ditemukan</p>';
 
-    const startDate = `${bln}-01`;
+    const isRS = pData.tipe?.toUpperCase() === 'RS';
+    const startDate = isRS ? tanggalMulai : `${bln}-01`;
+    const endDate = isRS ? tanggalAkhir : getMonthRange(bln).end;
     const year = parseInt(bln.split('-')[0]);
-    const month = parseInt(bln.split('-')[1]);
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const [
       { data: dbNota },
@@ -113,7 +115,8 @@ export default function Kuitansi() {
     }
     totalTagihan = Math.floor(totalTagihan);
 
-    const nomorKwitansi = await generateDocumentNumber('KWT', pData.kode_invoice, bln);
+    const periode = isRS ? { mode: 'range' as const, tanggalMulai, tanggalAkhir } : { mode: 'bulan' as const, bulan: bln };
+    const nomorKwitansi = await generateDocumentNumber('KWT', pData.kode_invoice, periode);
     const [tahunStr, bulanStr] = bln.split("-");
     const bulanNum = parseInt(bulanStr, 10);
     const namaBulan = new Date(parseInt(tahunStr, 10), bulanNum - 1, 1).toLocaleDateString("id-ID", { month: "long" });
@@ -207,12 +210,19 @@ export default function Kuitansi() {
   };
 
   const checkPaymentStatus = async (pelangganId: number, bulan: string) => {
-    const { data } = await supabase
-      .from('payment_status')
-      .select('is_paid')
-      .eq('pelanggan_id', pelangganId)
-      .eq('bulan', bulan)
-      .maybeSingle();
+    const pData = pelangganList.find(p => p.id === pelangganId);
+    const isRS = pData?.tipe?.toUpperCase() === 'RS';
+    
+    const payQuery = supabase.from('payment_status').select('is_paid').eq('pelanggan_id', pelangganId);
+    
+    if (isRS) {
+      const fallbackBulan = tanggalMulai.substring(0, 7);
+      payQuery.or(`and(tanggal_mulai.eq.${tanggalMulai},tanggal_akhir.eq.${tanggalAkhir}),and(bulan.eq.${fallbackBulan},tanggal_mulai.is.null)`);
+    } else {
+      payQuery.eq('bulan', bulan);
+    }
+    
+    const { data } = await payQuery.maybeSingle();
     return data?.is_paid || false;
   };
 
@@ -274,25 +284,43 @@ export default function Kuitansi() {
             </select>
           </div>
           <div>
-            <label className="block text-gray-700 text-sm font-bold mb-2">Bulan</label>
-            <input
-              type="month"
-              value={selectedBulan}
-              onChange={(e) => setSelectedBulan(e.target.value)}
-              className="w-full border rounded-lg py-2.5 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label className="block text-gray-700 text-sm font-bold mb-2">Periode</label>
+            {pelangganList.find(p => p.nama === selectedPelanggan)?.tipe?.toUpperCase() === 'RS' ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={tanggalMulai}
+                  onChange={(e) => setTanggalMulai(e.target.value)}
+                  className="w-full border rounded-lg py-2.5 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-gray-500 font-bold">-</span>
+                <input
+                  type="date"
+                  value={tanggalAkhir}
+                  onChange={(e) => setTanggalAkhir(e.target.value)}
+                  className="w-full border rounded-lg py-2.5 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            ) : (
+              <input
+                type="month"
+                value={selectedBulan}
+                onChange={(e) => setSelectedBulan(e.target.value)}
+                className="w-full border rounded-lg py-2.5 px-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
           </div>
           <div className="flex gap-2">
             <button
               onClick={handlePrint}
-              disabled={loading || !selectedPelanggan || !selectedBulan}
+              disabled={loading || !selectedPelanggan || (!selectedBulan && !tanggalMulai)}
               className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
             >
               <Printer size={18} /> Cetak
             </button>
             <button
               onClick={handleDownload}
-              disabled={loading || !selectedPelanggan || !selectedBulan}
+              disabled={loading || !selectedPelanggan || (!selectedBulan && !tanggalMulai)}
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
             >
               <Download size={18} /> Download
