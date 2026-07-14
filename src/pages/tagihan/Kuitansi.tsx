@@ -269,8 +269,8 @@ export default function Kuitansi() {
       <h2 className="text-2xl font-bold text-gray-800 mb-6">Cetak Kuitansi</h2>
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+          <div className="md:col-span-4 lg:col-span-3">
             <label className="block text-gray-700 text-sm font-bold mb-2">Pelanggan</label>
             <select
               value={selectedPelanggan}
@@ -283,7 +283,7 @@ export default function Kuitansi() {
               ))}
             </select>
           </div>
-          <div>
+          <div className="md:col-span-8 lg:col-span-5">
             <label className="block text-gray-700 text-sm font-bold mb-2">Periode</label>
             {pelangganList.find(p => p.nama === selectedPelanggan)?.tipe?.toUpperCase() === 'RS' ? (
               <div className="flex items-center gap-2">
@@ -310,7 +310,7 @@ export default function Kuitansi() {
               />
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 md:col-span-12 lg:col-span-4">
             <button
               onClick={handlePrint}
               disabled={loading || !selectedPelanggan || (!selectedBulan && !tanggalMulai)}

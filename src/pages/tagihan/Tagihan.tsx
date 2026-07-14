@@ -388,8 +388,8 @@ export default function Tagihan() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div className="lg:col-span-3">
             <label className="block text-gray-700 text-sm font-bold mb-2">Pelanggan</label>
             <select
               value={selectedPelanggan}
@@ -402,7 +402,7 @@ export default function Tagihan() {
               ))}
             </select>
           </div>
-          <div>
+          <div className="lg:col-span-5">
             <label className="block text-gray-700 text-sm font-bold mb-2">Periode Tagihan</label>
             {pelangganList.find(p => p.nama === selectedPelanggan)?.tipe?.toUpperCase() === 'RS' ? (
               <div className="flex items-center gap-2">
@@ -430,7 +430,7 @@ export default function Tagihan() {
             )}
           </div>
           {activeTab === 'linen_room' && (
-            <div>
+            <div className="lg:col-span-4">
               <label className="block text-gray-700 text-sm font-bold mb-2">Jenis Nota (Filter)</label>
               <select
                 value={selectedJenisNota}
