@@ -22,22 +22,15 @@ export const formatDateRange = (start: string, end: string): string => {
 
 /**
  * Konversi rentang tanggal ke romawi bulan untuk nomor dokumen.
- * Bulan & tahun sama → "V"
- * Bulan beda, tahun sama → "V-VI"
- * Lintas tahun → "XII-I" (tahun invoice = tahun tanggalAkhir)
+ * Sesuai permintaan, gunakan selalu bulan dan tahun dari tanggalAkhir.
  */
 export const toRomanMonthRange = (start: string, end: string): { roman: string; tahun: number } => {
   const romans = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
-  const ds = new Date(start + 'T00:00:00');
   const de = new Date(end + 'T00:00:00');
-  const ms = ds.getMonth() + 1;
   const me = de.getMonth() + 1;
   const tahun = de.getFullYear();
 
-  if (ms === me && ds.getFullYear() === de.getFullYear()) {
-    return { roman: romans[ms], tahun };
-  }
-  return { roman: `${romans[ms]}-${romans[me]}`, tahun };
+  return { roman: romans[me], tahun };
 };
 
 /**
