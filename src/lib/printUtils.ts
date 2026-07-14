@@ -3,6 +3,7 @@
  */
 import { supabase } from './supabaseClient';
 import { fmtRp, terbilang, escapeHtml } from './utils';
+import { formatDateRange } from './dateUtils';
 /**
  * Generate HTML kop surat persis seperti v24
  */
@@ -297,7 +298,8 @@ export const buildInvoicePelangganHTML = async (
   bln: string,
   notas: any[],
   kopHTML: string,
-  invNumber: string
+  invNumber: string,
+  periodeRange?: { tanggalMulai: string; tanggalAkhir: string }
 ): Promise<string> => {
   const { data: pg } = await supabase.from('pengaturan').select('*').limit(1).maybeSingle();
   const bankName = pg?.bank || "";
@@ -346,7 +348,9 @@ export const buildInvoicePelangganHTML = async (
       grandTotal += amount;
       // Jika label aslinya KILOAN, kita bisa tampilkan Kiloan, atau gunakan langsung
       const isRsKiloan = pel.tipe?.toUpperCase() === 'RS' && jenis === 'KILOAN';
-      const labelDesc = isRsKiloan ? `Biaya Cuci Linen Kiloan RS` : `${jenis} (Perincian Terlampir)`;
+      const labelDesc = isRsKiloan 
+        ? `Biaya Cuci Linen Kiloan RS${periodeRange ? ` (${formatDateRange(periodeRange.tanggalMulai, periodeRange.tanggalAkhir)})` : ''}` 
+        : `${jenis} (Perincian Terlampir)`;
 
       detailRows += `
             <tr>
@@ -359,12 +363,20 @@ export const buildInvoicePelangganHTML = async (
   }
 
   const tglCetak = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
+  
+  const titleBulan = periodeRange 
+    ? `${periodeRange.tanggalMulai} s/d ${periodeRange.tanggalAkhir}` 
+    : new Date(bln + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  
+  const periodeLabel = periodeRange 
+    ? formatDateRange(periodeRange.tanggalMulai, periodeRange.tanggalAkhir) 
+    : new Date(bln + "-01").toLocaleDateString("id-ID", { month: "long", year: "numeric" });
 
   return `<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Invoice ${escapeHtml(pel.nama)} - ${bln}</title>
+    <title>Invoice ${escapeHtml(pel.nama)} - ${titleBulan}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px 25px; color: #1e293b; font-size: 14px; background: #fff; }
@@ -390,6 +402,7 @@ export const buildInvoicePelangganHTML = async (
     <table class="info-table">
         <tr><td class="label-col">DATE</td><td>: &nbsp; ${tglCetak}</td></tr>
         <tr><td class="label-col">INVOICE NUMBER</td><td>: &nbsp; <strong>${invNumber}</strong></td></tr>
+        <tr><td class="label-col">PERIODE</td><td>: &nbsp; ${periodeLabel}</td></tr>
     </table>
     <div style="border-top: 1px solid #cbd5e1; margin-top: 15px; padding-top: 10px;">
         <div style="font-weight: 700; font-size: 14px; margin-bottom: 5px;">ATTENTION TO :</div>
