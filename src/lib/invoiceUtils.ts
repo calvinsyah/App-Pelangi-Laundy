@@ -1,5 +1,14 @@
 import { supabase } from './supabaseClient';
 import { toRoman } from './utils';
+import { toRomanMonthRange } from './dateUtils';
+
+/**
+ * Tipe periode untuk generateDocumentNumber.
+ * mode 'bulan' = jalur lama (HOTEL), mode 'range' = jalur baru (RS).
+ */
+export type Periode =
+  | { mode: 'bulan'; bulan: string }
+  | { mode: 'range'; tanggalMulai: string; tanggalAkhir: string };
 
 /**
  * Helper terpusat untuk men-generate nomor dokumen (Invoice atau Kwitansi).
@@ -7,22 +16,40 @@ import { toRoman } from './utils';
  *
  * @param tipeDoc 'INV' untuk Invoice, 'KWT' untuk Kwitansi
  * @param kodeInvoice Kode unik pelanggan (mis: 'HG', 'RS')
- * @param bln Periode dalam format 'YYYY-MM'
+ * @param periode Periode dalam format union Periode
  * @returns Nomor dokumen utuh, misal: '001/PL-INV-HG/VI/2026'
  */
 export const generateDocumentNumber = async (
   tipeDoc: 'INV' | 'KWT',
   kodeInvoice: string,
-  bln: string
+  periode: Periode
 ): Promise<string> => {
-  if (!kodeInvoice || !bln) return "";
-  const [tahunStr, bulanStr] = bln.split("-");
-  const tahun = parseInt(tahunStr, 10);
-  const bulanNum = parseInt(bulanStr, 10);
-  
-  // Cache key include tipeDoc to separate Invoice and Kwitansi
-  const cacheKey = `${tipeDoc}_${kodeInvoice}_${bln}`;
-  const counterKey = `${tipeDoc}_${kodeInvoice}_${tahun}`;
+  if (!kodeInvoice) return "";
+
+  let cacheKey: string;
+  let counterKey: string;
+  let romanPart: string;
+  let tahun: number;
+
+  if (periode.mode === 'bulan') {
+    const bln = periode.bulan;
+    if (!bln) return "";
+    const [tahunStr, bulanStr] = bln.split("-");
+    tahun = parseInt(tahunStr, 10);
+    const bulanNum = parseInt(bulanStr, 10);
+    cacheKey = `${tipeDoc}_${kodeInvoice}_${bln}`;
+    counterKey = `${tipeDoc}_${kodeInvoice}_${tahun}`;
+    romanPart = toRoman(bulanNum);
+  } else {
+    // mode === 'range'
+    const { tanggalMulai, tanggalAkhir } = periode;
+    if (!tanggalMulai || !tanggalAkhir) return "";
+    const rangeInfo = toRomanMonthRange(tanggalMulai, tanggalAkhir);
+    tahun = rangeInfo.tahun;
+    romanPart = rangeInfo.roman;
+    cacheKey = `${tipeDoc}_${kodeInvoice}_${tanggalMulai}_${tanggalAkhir}`;
+    counterKey = `${tipeDoc}_${kodeInvoice}_${tahun}`;
+  }
 
   try {
     // 1. Cek cache di tabel invoice_numbers
@@ -40,11 +67,11 @@ export const generateDocumentNumber = async (
 
     if (error || currentCounter === null) {
       console.error(`Error generating document number for ${tipeDoc}:`, error);
-      return `ERR/${tipeDoc}-${kodeInvoice}/${toRoman(bulanNum)}/${tahun}`;
+      return `ERR/${tipeDoc}-${kodeInvoice}/${romanPart}/${tahun}`;
     }
     
     // 3. Format nomor baru
-    const nomor = `${String(currentCounter).padStart(3, "0")}/PL-${tipeDoc}-${kodeInvoice}/${toRoman(bulanNum)}/${tahun}`;
+    const nomor = `${String(currentCounter).padStart(3, "0")}/PL-${tipeDoc}-${kodeInvoice}/${romanPart}/${tahun}`;
 
     // 4. Simpan ke database
     await supabase.from('invoice_numbers').upsert({ cache_key: cacheKey, nomor });
@@ -55,6 +82,7 @@ export const generateDocumentNumber = async (
     return "";
   }
 };
+
 
 /**
  * Hitung ulang total nota berdasarkan harga dan multiplier terbaru
