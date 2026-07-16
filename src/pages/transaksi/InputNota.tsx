@@ -224,6 +224,17 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
     setDisplayedLinen(newLinen);
   };
 
+  const computedTotal = useMemo(() => {
+    let total = 0;
+    if (isRS) {
+      total = (formData.berat_kg || 0) * (selectedPelanggan?.tarif_rs || 0);
+    } else {
+      const validItems = displayedLinen.filter(item => item.qty > 0);
+      total = validItems.reduce((sum, item) => sum + (item.harga * item.qty), 0);
+    }
+    return total;
+  }, [isRS, formData.berat_kg, selectedPelanggan?.tarif_rs, displayedLinen]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -369,7 +380,11 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
             </div>
           )}
 
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+          <div className="flex justify-end mt-4 text-xl font-bold text-gray-800 pr-2">
+            Total: Rp {computedTotal.toLocaleString('id-ID')}
+          </div>
+
+          <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-200">
             {onCloseCb && (
               <button type="button" onClick={onCloseCb} className="px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50 font-medium">Batal</button>
             )}
@@ -465,7 +480,11 @@ export default function InputNota({ editId: propsEditId, isModal, onSuccessCb, o
             </div>
           )}
 
-          <div className="bg-white p-4 border-t border-gray-200 flex justify-between -mx-6 -mb-6 rounded-b-xl mt-8">
+          <div className="flex justify-end mt-4 mb-2 text-2xl font-bold text-gray-800">
+            Total: Rp {computedTotal.toLocaleString('id-ID')}
+          </div>
+
+          <div className="bg-white p-4 border-t border-gray-200 flex justify-between -mx-6 -mb-6 rounded-b-xl mt-6">
             {editNotaId ? (
               <button
                 type="button"
