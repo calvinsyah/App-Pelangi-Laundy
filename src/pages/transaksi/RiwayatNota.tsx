@@ -24,8 +24,10 @@ export default function RiwayatNota() {
   };
   const [filterBulan, setFilterBulan] = useState(getCurrentMonthString());
   const [filterPelanggan, setFilterPelanggan] = useState('');
+  const [filterJenisNota, setFilterJenisNota] = useState('');
   
   const [pelangganList, setPelangganList] = useState<any[]>([]);
+  const [jenisNotaList, setJenisNotaList] = useState<any[]>([]);
 
   // Modals & Hooks
   const { confirm } = useConfirm();
@@ -38,11 +40,14 @@ export default function RiwayatNota() {
   const [editModalId, setEditModalId] = useState<number | null>(null);
 
   useEffect(() => {
-    const fetchPelanggan = async () => {
-      const { data } = await supabase.from('pelanggan').select('id, nama, tarif_rs, tipe_billing, tipe').order('nama');
-      setPelangganList(data || []);
+    const fetchData = async () => {
+      const { data: pelangganData } = await supabase.from('pelanggan').select('id, nama, tarif_rs, tipe_billing, tipe').order('nama');
+      setPelangganList(pelangganData || []);
+      
+      const { data: jenisData } = await supabase.from('jenis_nota').select('id, nama').order('nama');
+      setJenisNotaList(jenisData || []);
     };
-    fetchPelanggan();
+    fetchData();
   }, []);
 
   const fetchNota = async () => {
@@ -54,11 +59,15 @@ export default function RiwayatNota() {
         pelanggan (id, nama, tipe_billing, tipe, tarif_rs, tarif_flat),
         jenis_nota (id, nama)
       `)
-      .order('tanggal', { ascending: false })
+      .order('tanggal', { ascending: true })
       .limit(500);
 
     if (filterPelanggan) {
       query = query.eq('pelanggan_id', filterPelanggan);
+    }
+
+    if (filterJenisNota) {
+      query = query.eq('jenis_nota_id', filterJenisNota);
     }
 
     if (filterBulan) {
@@ -83,7 +92,7 @@ export default function RiwayatNota() {
 
   useEffect(() => {
     fetchNota();
-  }, [filterBulan, filterPelanggan]);
+  }, [filterBulan, filterPelanggan, filterJenisNota]);
 
   const handleDelete = async (id: number) => {
     const ok = await confirm('Yakin ingin menghapus nota ini secara permanen? Aksi ini tidak dapat dibatalkan.');
@@ -144,6 +153,19 @@ export default function RiwayatNota() {
               <option value="">Semua Pelanggan</option>
               {pelangganList.map(p => (
                 <option key={p.id} value={p.id}>{p.nama}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="min-w-[200px]">
+            <select
+              value={filterJenisNota}
+              onChange={(e) => setFilterJenisNota(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">Semua Jenis Nota</option>
+              {jenisNotaList.map(j => (
+                <option key={j.id} value={j.id}>{j.nama}</option>
               ))}
             </select>
           </div>

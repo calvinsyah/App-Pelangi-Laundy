@@ -57,7 +57,7 @@ Menu utama untuk operasional laundry harian.
 ### 4.2. Riwayat Nota
 - **Fungsi**: Melihat, mengedit, atau menghapus nota yang sudah dibuat.
 - **Cara Penggunaan**:
-  - Gunakan filter tanggal atau cari nama pelanggan.
+  - Gunakan filter tanggal, jenis nota, pelanggan, atau cari nama pelanggan.
   - Urutan nota default adalah dari tanggal terkecil ke terbesar.
   - Klik tombol **Edit** untuk mengubah rincian nota.
   - Klik tombol **Cetak** untuk mencetak nota fisik.
