@@ -1,4 +1,4 @@
-export const getLastDayOfMonth = (periodeYYYYMM: string): string => {
+const getLastDayOfMonth = (periodeYYYYMM: string): string => {
   const [y, m] = periodeYYYYMM.split('-').map(Number);
   return `${periodeYYYYMM}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
 };

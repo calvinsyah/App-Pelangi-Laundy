@@ -52,33 +52,6 @@ export const toRoman = (num: number): string => {
   return r[num] || "";
 };
 
-/**
- * Generate ID unik untuk Nota (format: YYYYMMDD-XXXX).
- */
-export const generateNotaId = (tanggalStr: string): string => {
-  const d = new Date(tanggalStr);
-  const yyyy = d.getFullYear().toString();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `${yyyy}${mm}${dd}-${randomStr}`;
-};
-
-/**
- * Auto-generate kode pelanggan dari nama.
- * Skip kata generik seperti HOTEL, RS, dll.
- */
-export const generateKodePelanggan = (nama: string): string => {
-  const GENERIC = ["HOTEL", "HOTELS", "THE", "RS", "RUMAH", "SAKIT", "TAB", "CAPSULE", "CLINIC", "VILLA", "RESORT", "APARTEMEN", "KLINIK"];
-  const kata = (nama || "").toUpperCase().replace(/[^A-Z0-9\s]/g, "").split(/\s+/).filter(Boolean);
-  let kode = "";
-  for (const k of kata) { 
-    if (GENERIC.includes(k)) continue; 
-    kode += k[0]; 
-    if (kode.length >= 5) break; 
-  }
-  return kode || (kata[0] ? kata[0].substring(0, 3) : "PL");
-};
 
 /**
  * Parse input string ke angka (misal "1.000.000" -> 1000000).

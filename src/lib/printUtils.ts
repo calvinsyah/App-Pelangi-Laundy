@@ -103,36 +103,7 @@ export const downloadHTML = (html: string, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
-/**
- * Download HTML Table string sebagai Excel (.xls)
- */
-export const downloadExcel = (htmlTable: string, filename: string) => {
-  const excelHTML = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        table { border-collapse: collapse; } 
-        th { background: #1e3a5f; color: white; padding: 5px; border: 1px solid #999; } 
-        td { padding: 4px; border: 1px solid #ccc; }
-      </style>
-    </head>
-    <body>
-      ${htmlTable}
-    </body>
-    </html>
-  `;
 
-  const blob = new Blob([excelHTML], { type: "application/vnd.ms-excel" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename.endsWith(".xls") ? filename : `${filename}.xls`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
 
 export const buildLinenRoomHTML = async (
   pel: any,
