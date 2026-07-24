@@ -2,6 +2,9 @@ name: CI
 
 on: [pull_request]
 
+env:
+  SUPABASE_ANON_KEY: ""
+
 jobs:
   test:
     runs-on: ubuntu-latest

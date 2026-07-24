@@ -6,6 +6,9 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch: # Allow manual trigger
 
+env:
+  BACKUP_FILENAME: ""
+
 jobs:
   backup:
     runs-on: ubuntu-latest
