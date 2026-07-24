@@ -1,7 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config();
+// Force load .env.development for tests
+dotenv.config({ path: path.resolve(__dirname, '.env.development') });
+
+// GUARD: Mencegah E2E test berjalan di database produksi
+const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+if (supabaseUrl.includes('supabase.co')) {
+  console.error('CRITICAL ERROR: Playwright is trying to run against a production Supabase instance.');
+  console.error('Aborting tests to prevent data pollution. Please ensure you are using a local Supabase (127.0.0.1) in .env.development.');
+  process.exit(1);
+}
 
 export default defineConfig({
   testDir: './tests',

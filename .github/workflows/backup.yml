@@ -1,0 +1,33 @@
+name: Backup Database
+
+on:
+  schedule:
+    # Run every day at 02:00 UTC (09:00 WIB)
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client gzip
+
+      - name: Dump and Compress Database
+        run: |
+          timestamp=$(date +"%Y%m%d_%H%M%S")
+          filename="pelangi_backup_${timestamp}.sql.gz"
+          pg_dump "${{ secrets.SUPABASE_DB_URL }}" | gzip > $filename
+          echo "BACKUP_FILENAME=$filename" >> $GITHUB_ENV
+
+      # Upload ke R2 menggunakan AWS CLI bawaan runner
+      - name: Upload to R2 with AWS CLI
+        run: |
+          aws s3 cp ${{ env.BACKUP_FILENAME }} s3://${{ secrets.R2_BUCKET_NAME }}/backups/${{ env.BACKUP_FILENAME }} --endpoint-url ${{ secrets.R2_ENDPOINT_URL }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto

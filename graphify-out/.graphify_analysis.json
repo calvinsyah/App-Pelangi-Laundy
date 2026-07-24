@@ -1,0 +1,79 @@
+{
+  "communities": {
+    "0": [
+      "agents_skills_systematic_debugging_condition_based_waiting_example_waitforevent"
+    ],
+    "1": [
+      "agents_skills_systematic_debugging_condition_based_waiting_example_waitforeventcount"
+    ],
+    "2": [
+      "agents_skills_systematic_debugging_condition_based_waiting_example_waitforeventmatch"
+    ],
+    "3": [
+      "src_components_errorboundary_errorboundary"
+    ],
+    "4": [
+      "src_components_fab_fab"
+    ],
+    "5": [
+      "src_lib_invoiceutils_periode"
+    ],
+    "6": [
+      "src_pages_dashboard_dashboard"
+    ]
+  },
+  "cohesion": {
+    "0": 1.0,
+    "1": 1.0,
+    "2": 1.0,
+    "3": 1.0,
+    "4": 1.0,
+    "5": 1.0,
+    "6": 1.0
+  },
+  "gods": [
+    {
+      "id": "agents_skills_systematic_debugging_condition_based_waiting_example_waitforevent",
+      "label": "waitForEvent",
+      "degree": 0
+    },
+    {
+      "id": "agents_skills_systematic_debugging_condition_based_waiting_example_waitforeventcount",
+      "label": "waitForEventCount",
+      "degree": 0
+    },
+    {
+      "id": "agents_skills_systematic_debugging_condition_based_waiting_example_waitforeventmatch",
+      "label": "waitForEventMatch",
+      "degree": 0
+    },
+    {
+      "id": "src_components_errorboundary_errorboundary",
+      "label": "ErrorBoundary",
+      "degree": 0
+    },
+    {
+      "id": "src_components_fab_fab",
+      "label": "FAB",
+      "degree": 0
+    },
+    {
+      "id": "src_lib_invoiceutils_periode",
+      "label": "Periode",
+      "degree": 0
+    },
+    {
+      "id": "src_pages_dashboard_dashboard",
+      "label": "Dashboard",
+      "degree": 0
+    }
+  ],
+  "surprises": [],
+  "questions": [
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `waitForEvent`, `waitForEventCount`, `waitForEventMatch` to the rest of the system?",
+      "why": "7 weakly-connected nodes found - possible documentation gaps or missing edges."
+    }
+  ]
+}

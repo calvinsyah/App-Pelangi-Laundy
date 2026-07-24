@@ -20,8 +20,28 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start Local Supabase
+        run: supabase start
+
+      - name: Get Supabase Anon Key
+        run: echo "SUPABASE_ANON_KEY=$(supabase status -o json | jq -r '.ANON_KEY')" >> $GITHUB_ENV
+
+      - name: Run unit tests
+        run: npm run test
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
       - name: Run Playwright tests
         run: npx playwright test
+        env:
+          VITE_SUPABASE_URL: http://127.0.0.1:54321
+          VITE_SUPABASE_ANON_KEY: ${{ env.SUPABASE_ANON_KEY }}
+          # Get anon key directly from local supabase instance via cli
+          TEST_EMAIL: admin@local.dev
+          TEST_PASSWORD: testpassword123
