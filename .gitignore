@@ -1,23 +1,50 @@
+# Dependencies & Build
 node_modules/
 build/
 dist/
 coverage/
-.DS_Store
-*.log
+
+# Environment
 .env*
 !.env.example
-.testsprite/runs/
 
-# Legacy and Backup files
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.opencode/
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# Legacy & Backup
 *.bak
 /file update/
 /versi_lama/
 note.txt
-test-results/
 script.js
 style.css
-playwright-report/
 
+# Agent tools (development-only)
+.agents/
+.claude/
+.testsprite/
+graphify-out/
+skills-lock.json
 scratch/
 *_tmp.ts
-.opencode/
+
+# Sandbox (local dev environment)
+sandbox-env/
+
+# Standalone scripts (not part of app build)
+scripts/race-condition-test.js
+scripts/playwright-test.mjs
+scripts/backup.js
+scripts/update_harga_nota.ts
+
+# Schema dump (auto-generated, not source code)
+schema.ts
