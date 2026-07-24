@@ -23,11 +23,9 @@ jobs:
           pg_dump "${{ secrets.SUPABASE_DB_URL }}" | gzip > $filename
           echo "BACKUP_FILENAME=$filename" >> $GITHUB_ENV
 
-      # Upload ke R2 menggunakan AWS CLI bawaan runner
-      - name: Upload to R2 with AWS CLI
-        run: |
-          aws s3 cp ${{ env.BACKUP_FILENAME }} s3://${{ secrets.R2_BUCKET_NAME }}/backups/${{ env.BACKUP_FILENAME }} --endpoint-url ${{ secrets.R2_ENDPOINT_URL }}
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
+      - name: Upload Backup as GitHub Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ env.BACKUP_FILENAME }}
+          path: ${{ env.BACKUP_FILENAME }}
+          retention-days: 90
