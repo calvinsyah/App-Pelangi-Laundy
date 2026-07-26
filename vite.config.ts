@@ -32,7 +32,6 @@ export default defineConfig(() => {
             'supabase': ['@supabase/supabase-js'],
             'query': ['@tanstack/react-query'],
             'dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
-            'motion': ['motion'],
             'icons': ['lucide-react'],
           },
         },
